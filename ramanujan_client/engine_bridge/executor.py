@@ -1,7 +1,14 @@
 import os
 import sys
 
-from ramanujan.LHSHashTable import LHSHashTable
+try:
+    from ramanujan.LHSHashTable import LHSHashTable
+except ModuleNotFoundError:
+    # Local Developer Fallback: Instantly resolves the library if pip installation is bypassed.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'RamanujanMachine'))
+    sys.path.append(repo_root)
+    from ramanujan.LHSHashTable import LHSHashTable
+
 from ramanujan.constants import g_const_dict
 from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
 from ramanujan.enumerators.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
