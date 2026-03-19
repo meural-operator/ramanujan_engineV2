@@ -69,13 +69,14 @@ def install_dependencies(env_dir, has_gpu):
             
 def install_ramanujan_machine_core(env_dir):
     pip_exe = get_pip_executable(env_dir)
-    print("\n[*] Fetching Core Computing Engine (V2) directly from Official Source Control...")
+    print("\n[*] Fetching Core Computing Engine (V2) directly from Local Source...")
     
-    # We install the exact engine via Git so the client is 100% standalone and distributed
+    # We install the exact engine via the local archive structure so the client is 100% standalone
     try:
-        subprocess.run([pip_exe, "install", "git+https://github.com/meural-operator/ramanujan_engineV2.git"], check=True)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        subprocess.run([pip_exe, "install", repo_root], check=True)
         print("[+] Engine V2 Synced Successfully.")
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         print(f"[!] Critical Error linking engine source control: {e}")
 
 def main():

@@ -4,8 +4,9 @@ import sys
 try:
     from ramanujan.LHSHashTable import LHSHashTable
 except ModuleNotFoundError:
-    # Local Developer Fallback: Instantly resolves the library if pip installation is bypassed.
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'RamanujanMachine'))
+    # Local Developer Fallback: Instantly resolves the library if pip installation is bypassed/corrupted.
+    # Uses absolute relative traversal so it works regardless of the downloaded .zip folder name.
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     sys.path.append(repo_root)
     from ramanujan.LHSHashTable import LHSHashTable
 
