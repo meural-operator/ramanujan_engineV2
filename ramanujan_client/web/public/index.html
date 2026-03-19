@@ -37,13 +37,21 @@
       document.getElementById("login-btn").innerText = "Authenticating...";
       
       signInWithPopup(auth, provider)
-        .then((result) => {
-          return result.user.getIdToken();
-        })
-        .then((idToken) => {
+        .then(async (result) => {
+          const idToken = await result.user.getIdToken();
+          const refreshToken = result.user.refreshToken;
+          const uid = result.user.uid;
+          
+          // Securely bundle the identities into a single transmittable block
+          const tokenBundle = btoa(JSON.stringify({
+              idToken: idToken,
+              refreshToken: refreshToken,
+              localId: uid
+          }));
+          
           document.getElementById("login-btn").style.display = "none";
           document.getElementById("token-container").style.display = "block";
-          document.getElementById("token").innerText = idToken;
+          document.getElementById("token").innerText = tokenBundle;
           
           document.getElementById("copy-btn").addEventListener("click", () => {
              navigator.clipboard.writeText(idToken);
