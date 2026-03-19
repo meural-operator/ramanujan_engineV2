@@ -9,7 +9,7 @@ import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', 'RamanujanMachine')))
 from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
 
-SERVICE_ACCOUNT_KEY_PATH = "../ramanujan-engine-firebase-adminsdk-fbsvc-4d453f21c2.json"
+SERVICE_ACCOUNT_KEY_PATH = r"C:\Users\DIAT\ashish\ramanujan_machine\ramanujan-engine-firebase-adminsdk-fbsvc-4d453f21c2.json"
 DATABASE_URL = "https://ramanujan-engine-default-rtdb.firebaseio.com"
 
 def generate_tiered_space():

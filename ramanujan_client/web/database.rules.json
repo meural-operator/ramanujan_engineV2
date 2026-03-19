@@ -1,0 +1,37 @@
+{
+  "rules": {
+    "work_units_small": {
+      ".read": "auth != null",
+      ".indexOn": ["status"],
+      "$unit_id": {
+        ".write": "auth != null && (!data.exists() || data.child('assigned_to').val() == '' || data.child('assigned_to').val() == auth.uid)"
+      }
+    },
+    "work_units_medium": {
+      ".read": "auth != null",
+      ".indexOn": ["status"],
+      "$unit_id": {
+        ".write": "auth != null && (!data.exists() || data.child('assigned_to').val() == '' || data.child('assigned_to').val() == auth.uid)"
+      }
+    },
+    "work_units_large": {
+      ".read": "auth != null",
+      ".indexOn": ["status"],
+      "$unit_id": {
+        ".write": "auth != null && (!data.exists() || data.child('assigned_to').val() == '' || data.child('assigned_to').val() == auth.uid)"
+      }
+    },
+    "results": {
+      ".read": "auth != null",
+      "$result_id": {
+        ".write": "auth != null && newData.child('client_id').val() == auth.uid"
+      }
+    },
+    "users": {
+        ".read": "auth != null",
+        "$uid": {
+            ".write": "auth != null && $uid == auth.uid"
+        }
+    }
+  }
+}
