@@ -56,21 +56,16 @@ def install_dependencies(env_dir, has_gpu):
     subprocess.run([pip_exe, "install"] + base_packages, check=True)
     
     print("[*] Installing PyTorch subsystem...")
-    try:
-        if has_gpu:
-            print("[+] NVIDIA GPU Detected! Installing heavy CUDA-accelerated PyTorch tensors...")
-            # Leverage highest stable pip bounds for CUDA compatibility.
-            subprocess.run([pip_exe, "install", "torch==2.10.0+cu130", "torchvision==0.25.0+cu130", "--index-url", "https://download.pytorch.org/whl/cu130"], check=True)
+    if has_gpu:
+        print("[+] NVIDIA GPU Detected! Installing heavy CUDA-accelerated PyTorch tensors...")
+        # Leverage highest stable pip bounds for CUDA compatibility.
+        subprocess.run([pip_exe, "install", "torch==2.10.0+cu130", "torchvision==0.25.0+cu130", "--index-url", "https://download.pytorch.org/whl/cu130"], check=True)
+    else:
+        print("[-] No NVIDIA GPU Detected. Auto-falling back to CPU-only PyTorch binaries (Lightweight)...")
+        if is_windows():
+            subprocess.run([pip_exe, "install", "torch==2.10.0", "torchvision==0.25.0"], check=True)
         else:
-            print("[-] No NVIDIA GPU Detected. Auto-falling back to CPU-only PyTorch binaries (Lightweight)...")
-            if is_windows():
-                subprocess.run([pip_exe, "install", "torch==2.10.0", "torchvision==0.25.0"], check=True)
-            else:
-                subprocess.run([pip_exe, "install", "torch==2.10.0+cpu", "torchvision==0.25.0+cpu", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
-    except subprocess.CalledProcessError as e:
-        print(f"\n[!] WARNING: Advanced hardware PyTorch installation failed due to Python architecture constraints.")
-        print("[!] Falling back to standard universal PyPI PyTorch...")
-        subprocess.run([pip_exe, "install", "torch", "torchvision"])
+            subprocess.run([pip_exe, "install", "torch==2.10.0+cpu", "torchvision==0.25.0+cpu", "--index-url", "https://download.pytorch.org/whl/cpu"], check=True)
             
 def install_ramanujan_machine_core(env_dir):
     pip_exe = get_pip_executable(env_dir)
@@ -89,8 +84,9 @@ def main():
     print("      Ramanujan@Home - Setup & Autoinstaller      ")
     print("==================================================")
     
-    # Creates an isolated compute domain within the client directory wrapper
-    env_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "client_env"))
+    # Creates an isolated compute domain located functionally at the root of the User Profile
+    # This purposefully overrides standard logic to natively bypass the notorious Windows 260 character MAX_PATH API limitation
+    env_dir = os.path.abspath(os.path.join(os.path.expanduser("~"), ".ramanujan_env"))
     
     gpu_available = has_nvidia_gpu()
     
