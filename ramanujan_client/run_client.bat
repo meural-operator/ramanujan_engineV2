@@ -20,7 +20,7 @@ if not "%PYTHON_CMD%"=="" goto :INSTALL_DONE
 echo [*] Python 3.13 isolated runtime not found.
 echo [*] Downloading portable MicroMamba engine for clean installation...
 if not exist "micromamba.tar.bz2" (
-    powershell -Command "Invoke-WebRequest -Uri 'https://micro.mamba.pm/api/micromamba/win-64/latest' -OutFile 'micromamba.tar.bz2'"
+    powershell -Command "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri 'https://micro.mamba.pm/api/micromamba/win-64/latest' -OutFile 'micromamba.tar.bz2'"
 )
 
 echo [*] Extracting MicroMamba...
