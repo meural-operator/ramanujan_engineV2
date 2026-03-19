@@ -199,7 +199,7 @@ class ServerCoordinator:
                 update_data = {
                     "status": "assigned",
                     "assigned_to": user_uid,
-                    "time_assigned": int(time.time())
+                    "time_assigned": int(time.time() * 1000)
                 }
                 
                 # Attempt the atomic-like update using the idToken and precise Security Rules
@@ -215,7 +215,40 @@ class ServerCoordinator:
                     print(f"[-] Someone else claimed {unit_id} first or permission denied. Trying next...")
                     continue
                     
-            print("[-] Flushed pending queue, but could not claim a unit.")
+            # ---------------------------------------------------------
+            # THE DEAD LETTER QUEUE (Orphan Recovery Block)
+            # ---------------------------------------------------------
+            print(f"[-] No pristine blocks found. Scanning for abandoned hardware nodes...")
+            stale_query = self.db.child(f"work_units_{tier}").order_by_child("status").equal_to("assigned").limit_to_first(50).get(self.id_token)
+            
+            if stale_query.val():
+                current_time_ms = int(time.time() * 1000)
+                abandon_limit_ms = 3600 * 1000 # 1 hour timeout
+                
+                for unit in stale_query.each():
+                    u_id = unit.key()
+                    u_data = unit.val()
+                    assigned_time = u_data.get("time_assigned", current_time_ms)
+                    
+                    if current_time_ms - assigned_time > abandon_limit_ms:
+                        print(f"[*] Recovered orphaned payload: {u_id}. Attempting to forcefully re-assign to local node...")
+                        try:
+                            rescue_data = {
+                                "status": "assigned",
+                                "assigned_to": self.user.get('localId', self.user.get('userId')),
+                                "time_assigned": current_time_ms
+                            }
+                            self.db.child(f"work_units_{tier}").child(u_id).update(rescue_data, self.id_token)
+                            print(f"[+] Successfully resurrected and hijacked Dead Letter Payload {u_id}!")
+                            
+                            if "id" not in u_data:
+                                u_data["id"] = u_id
+                            return u_data
+                        except Exception:
+                            print("[-] Failed to rescue orphaned payload (already stolen by another node).")
+                            continue
+            
+            print(f"[-] No blocks available in the {tier} track. Database is temporarily exhausted.")
             return None
             
         except Exception as e:
