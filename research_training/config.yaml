@@ -1,0 +1,47 @@
+# Hyperparameter Configuration for Research-Scale RL Training
+# Target: Euler-Mascheroni Constant (γ) convergence via GCF representation
+
+hardware:
+  device: "cuda"  # Automatically falls back to cpu if unavailable
+  # Number of environments to run in parallel (to saturate GPU)
+  # Keeping this at 1 for now since we rely on sequential rollouts internally
+  num_workers: 1 
+
+training:
+  episodes: 1500000             # Target a long run for deep combinatorial exploration
+  log_freq_episodes: 100        # How often to log to TensorBoard & stdout
+  checkpoint_freq_episodes: 500 # Unconditional save frequency (best-models are saved dynamically)
+  checkpoint_dir: "../checkpoints"
+  checkpoint_filename: "em_mcts.pt"
+
+environment:
+  max_steps_initial: 20         # Start easy (Curriculum mapping)
+  max_steps_limit: 150          # Final strict depth for deep evaluations
+  curriculum_step_increase: 10  # How many steps to add when promoting to next curriculum level
+  curriculum_promotion_reward: 35.0 # Required mean reward threshold to upgrade depth
+  curriculum_patience_eps: 500  # Minimum episodes to wait before another upgrade
+
+ppo:
+  lr: 0.0003                    # Learning rate
+  gamma: 0.99                   # Discount factor for GAE
+  gae_lambda: 0.95              # Bias-variance trade-off
+  clip_epsilon: 0.2             # PPO clip ratio limits policy destruction
+  value_coef: 0.5               # Weight of the value loss in optimization
+  entropy_coef_initial: 0.05    # High initial exploration
+  entropy_coef_final: 0.005     # Decayed exploration boundary
+  entropy_decay_steps: 500000   # Linear decay horizon for entropy
+  max_grad_norm: 0.5            # Prevents gradient explosion
+  n_epochs: 4                   # Number of optimization epochs per rollout batch
+  batch_size: 128               # Mini-batch size
+  update_freq: 32               # Number of trajectories collected before running PPO
+
+mcts:
+  simulations: 200              # Number of inner-loop tree traversals before taking 1 env step
+  c_puct: 1.5                   # UCB exploration constant
+  dirichlet_alpha: 0.3          # Concentration parameter for noise injection
+  dirichlet_epsilon: 0.25       # Weight of noise applied to root node
+
+network:
+  hidden_dim: 256
+  state_dim: 4                  # [log(|q|), log(|p|), log(|prev_q|), log(|prev_p|)]
+  action_dim: 2                 # [a_n, b_n]
