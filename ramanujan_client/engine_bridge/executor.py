@@ -1,14 +1,15 @@
 import os
 import sys
+
+# Force Python to prioritize the local repository over any cached pip installations
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+if repo_root not in sys.path:
+    sys.path.insert(0, repo_root)
+
 import torch
 from concurrent.futures import ThreadPoolExecutor
 
-try:
-    from ramanujan.LHSHashTable import LHSHashTable
-except ModuleNotFoundError:
-    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    sys.path.append(repo_root)
-    from ramanujan.LHSHashTable import LHSHashTable
+from ramanujan.LHSHashTable import LHSHashTable
 
 from ramanujan.constants import g_const_dict
 from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
