@@ -167,3 +167,32 @@ class ServerCoordinator:
         except Exception as e:
             print(f"[!] Error submitting hits: {e}")
             return False
+
+    def submit_results_bulk(self, pending_rows):
+        if not pending_rows:
+            return []
+            
+        print(f"[*] Attempting Cloud Sync for {len(pending_rows)} pending discoveries...")
+        successful_ids = []
+        db = self.firebase.database()
+        
+        for row in pending_rows:
+            rowid, v2_bound_id, lhs_key, rhs_an, rhs_bn, client_id, timestamp = row
+            result_data = {
+                "v2_bound_id": v2_bound_id,
+                "lhs_key": lhs_key,
+                "rhs_an_poly": rhs_an,
+                "rhs_bn_poly": rhs_bn,
+                "client_id": client_id,
+                "timestamp": timestamp
+            }
+            try:
+                db.child("v2_dynamic_tasks").child("results").push(result_data, self.id_token)
+                successful_ids.append(rowid)
+            except Exception as e:
+                print(f"[!] Sync failed for hit {rowid}: {e}")
+                
+        if successful_ids:
+            print(f"[+] Successfully synced {len(successful_ids)}/{len(pending_rows)} discoveries to Cloud.")
+            
+        return successful_ids
