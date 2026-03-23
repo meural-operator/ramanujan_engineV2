@@ -24,10 +24,18 @@ class EulerMascheroniTarget(TargetConstant):
         """
         import pickle
         import os
-        db_path = "euler_mascheroni.db"
+        
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        db_path = os.path.join(repo_root, "euler_mascheroni.db")
+        
         if os.path.exists(db_path):
             with open(db_path, 'rb') as f:
                 return pickle.load(f)
+        else:
+            raise FileNotFoundError(
+                f"Missing {db_path}. Please run `scripts/seed_euler_mascheroni_db.py` "
+                "first to pre-calculate the mathematical LHS structures before running the compute node!"
+            )
         return {}
 
     def verify_match(self, a_coef: tuple, b_coef: tuple) -> float:
