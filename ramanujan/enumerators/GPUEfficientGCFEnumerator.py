@@ -5,6 +5,8 @@ import mpmath
 from time import time
 from typing import List
 from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
+import os
 
 from .EfficientGCFEnumerator import EfficientGCFEnumerator, Match, RefinedMatch
 from ramanujan.utils.mobius import EfficientGCF
@@ -18,56 +20,49 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        
+        # Scale CPU workers based on threads available (reserve 1 for main GPU loop)
+        self.num_workers = max(1, os.cpu_count() - 1)
+        
         if self.device.type == 'cuda':
             gpu_name = torch.cuda.get_device_name(0)
             gpu_mem = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-            print(f"[GPU] Using {gpu_name} ({gpu_mem:.1f} GB VRAM)")
+            print(f"[GPU] Using {gpu_name} ({gpu_mem:.1f} GB VRAM) | ThreadPool: {self.num_workers} workers")
         else:
-            print("[GPU] CUDA not available, falling back to CPU")
+            print(f"[GPU] CUDA not available, falling back to CPU | ThreadPool: {self.num_workers} workers")
 
-    def _worker_thread(self, verify_queue, shared_results, pbar_worker, verbose):
+    def _cpu_verify_task(self, match_obj, pbar_worker, shared_results, verbose):
         """
-        Background daemon evaluating high-precision mpmath on CPU.
+        Hyper-precision mpmath verification task executed in the ThreadPoolExecutor.
         """
         with mpmath.workdps(g_N_verify_terms * 2): # Run CPU verify at hyper-precision
-            constant_vals = [const() for const in self.constants_generator]
+            # Step 1: Calculate High Precision Evaluate (Improve Precision)
+            an = self.create_an_series(match_obj.rhs_an_poly, g_N_verify_terms)
+            bn = self.create_bn_series(match_obj.rhs_bn_poly, g_N_verify_terms)
+            gcf = EfficientGCF(an, bn)
+            rhs_str = mpmath.nstr(gcf.evaluate(), g_N_verify_compare_length)
             
-            while True:
-                item = verify_queue.get()
-                if item is None: # Sentinel value
-                    verify_queue.task_done()
-                    break
-                    
-                match_obj = item
+            # Step 2: Refine Results
+            try:
+                all_matches = self.hash_table.evaluate(match_obj.lhs_key)
+                valid = True
+                for val, _, _ in all_matches:
+                    if mpmath.isinf(val) or mpmath.isnan(val):
+                        valid = False
+                        break
+                if valid:
+                    for i, lhs_match in enumerate(all_matches):
+                        val_str = mpmath.nstr(lhs_match[0], g_N_verify_compare_length)
+                        if val_str == rhs_str:
+                            refined = RefinedMatch(*match_obj, i, lhs_match[1], lhs_match[2])
+                            shared_results.append(refined)
+                            if verbose:
+                                tqdm.write(f"\n[!] VERIFIED CONJECTURE FOUND! {refined}")
+            except Exception:
+                pass
                 
-                # Step 1: Calculate High Precision Evaluate (Improve Precision)
-                an = self.create_an_series(match_obj.rhs_an_poly, g_N_verify_terms)
-                bn = self.create_bn_series(match_obj.rhs_bn_poly, g_N_verify_terms)
-                gcf = EfficientGCF(an, bn)
-                rhs_str = mpmath.nstr(gcf.evaluate(), g_N_verify_compare_length)
-                
-                # Step 2: Refine Results
-                try:
-                    all_matches = self.hash_table.evaluate(match_obj.lhs_key)
-                    valid = True
-                    for val, _, _ in all_matches:
-                        if mpmath.isinf(val) or mpmath.isnan(val):
-                            valid = False
-                            break
-                    if valid:
-                        for i, lhs_match in enumerate(all_matches):
-                            val_str = mpmath.nstr(lhs_match[0], g_N_verify_compare_length)
-                            if val_str == rhs_str:
-                                refined = RefinedMatch(*match_obj, i, lhs_match[1], lhs_match[2])
-                                shared_results.append(refined)
-                                if verbose:
-                                    tqdm.write(f"\n[!] VERIFIED CONJECTURE FOUND! {refined}")
-                except Exception:
-                    pass
-                    
-                pbar_worker.update(1)
-                pbar_worker.set_postfix({'Verified Hits': len(shared_results)})
-                verify_queue.task_done()
+            pbar_worker.update(1)
+            pbar_worker.set_postfix({'Verified Hits': len(shared_results)})
 
     def full_execution(self, verbose=True):
         """
@@ -125,15 +120,9 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
         raw_hits = []
         refined_results = []
         
-        verify_queue = queue.Queue()
-        pbar_worker = tqdm(total=0, desc="CPU Verify", position=1, leave=False)
-        
-        worker_thread = threading.Thread(
-            target=self._worker_thread,
-            args=(verify_queue, refined_results, pbar_worker, verbose),
-            daemon=True
-        )
-        worker_thread.start()
+        pbar_worker = tqdm(total=0, desc="CPU Verify Multi-Core", position=1, leave=False)
+        executor = ThreadPoolExecutor(max_workers=self.num_workers)
+        futures = []
         
         key_factor = round(1 / self.threshold)
         processed_combinations = 0
@@ -232,8 +221,9 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
                             match = Match(key, a_coef_list[a_idx], b_coef_list[b_idx])
                             raw_hits.append(match)
                             
-                            # Pass to parallel CPU Queue for mpmath digestion
-                            verify_queue.put(match)
+                            # Submit task to ThreadPool instead of manual Queue
+                            future = executor.submit(self._cpu_verify_task, match, pbar_worker, refined_results, verbose)
+                            futures.append(future)
                             pbar_worker.total += 1
                             pbar_worker.refresh()
                     
@@ -251,9 +241,8 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
                             logf.write(f"[{time()}] {log_str}\n")
                         
         pbar_worker.set_description("CPU Draining Queue")
-        verify_queue.put(None)
-        verify_queue.join()
-        worker_thread.join()
+        # Wait for all thread pool verification tasks to complete
+        executor.shutdown(wait=True)
         pbar_worker.close()
 
         if verbose:

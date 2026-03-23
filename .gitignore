@@ -1,3 +1,10 @@
 source/venv/*
 source/__pycache__/*
 source/tmp_results
+
+# Prevent enormous AI and DB files from destroying the repo
+*.db
+*.log
+**/__pycache__/
+**/*.pyc
+research_training/runs/
