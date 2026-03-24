@@ -1,7 +1,7 @@
-from ramanujan.enumerators.ParallelGCFEnumerator import ParallelGCFEnumerator
-from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.engines.ParallelGCFEnumerator import ParallelGCFEnumerator
+from modules.continued_fractions.domains.CartesianProductPolyDomain import CartesianProductPolyDomain
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.targets import g_const_dict
 
 """
 This script enumerates GCFs for pi.

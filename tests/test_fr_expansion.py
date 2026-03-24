@@ -1,7 +1,7 @@
 import unittest
-from ramanujan.enumerators.FREnumerator import FREnumerator
-from ramanujan.poly_domains.Zeta5Domain import Zeta5Domain
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.engines.FREnumerator import FREnumerator
+from modules.continued_fractions.domains.Zeta5Domain import Zeta5Domain
+from modules.continued_fractions.targets import g_const_dict
 
 class TestFRExpansion(unittest.TestCase):
     def test_multidimensional_pslq_setup(self):

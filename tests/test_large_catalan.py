@@ -1,8 +1,8 @@
 import mpmath
 import sympy
 from unittest import TestCase
-from ramanujan.utils.utils import iter_series_items_from_func
-from ramanujan.enumerators.RelativeGCFEnumerator import gcf_calculation_to_precision
+from modules.continued_fractions.utils.utils import iter_series_items_from_func
+from modules.continued_fractions.engines.RelativeGCFEnumerator import gcf_calculation_to_precision
 
 
 class TestContinuedFracture(TestCase):

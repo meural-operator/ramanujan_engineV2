@@ -1,4 +1,4 @@
-from ramanujan_client.engine_bridge.executor import RamanujanExecutor
+from clients.engine_bridge.executor import RamanujanExecutor
 
 ex = RamanujanExecutor()
 mock_wu = {

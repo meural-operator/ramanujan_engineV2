@@ -1,6 +1,6 @@
 import unittest
-from ramanujan.poly_domains.ContinuousRelaxationDomain import ContinuousRelaxationDomain
-from ramanujan.poly_domains.MCTSPolyDomain import MCTSPolyDomain
+from modules.continued_fractions.domains.ContinuousRelaxationDomain import ContinuousRelaxationDomain
+from modules.continued_fractions.domains.MCTSPolyDomain import MCTSPolyDomain
 
 class TestPolyDomains(unittest.TestCase):
     def test_continuous_relaxation_domain(self):

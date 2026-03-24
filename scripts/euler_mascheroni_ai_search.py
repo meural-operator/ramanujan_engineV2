@@ -1,8 +1,8 @@
 import time
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.enumerators.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
-from ramanujan.poly_domains.ContinuousRelaxationDomain import ContinuousRelaxationDomain
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.engines.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
+from modules.continued_fractions.domains.ContinuousRelaxationDomain import ContinuousRelaxationDomain
+from modules.continued_fractions.targets import g_const_dict
 
 def main():
     print("Starting AI-Accelerated Baseline Search for Euler-Mascheroni Constant...")

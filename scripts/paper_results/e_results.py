@@ -1,7 +1,7 @@
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.enumerators.EfficientGCFEnumerator import EfficientGCFEnumerator
-from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.engines.EfficientGCFEnumerator import EfficientGCFEnumerator
+from modules.continued_fractions.domains.CartesianProductPolyDomain import CartesianProductPolyDomain
+from modules.continued_fractions.targets import g_const_dict
 
 """
 This script enumerates GCFs for e.

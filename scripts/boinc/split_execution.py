@@ -1,12 +1,12 @@
 import os
 import json
 import time
-from ramanujan.poly_domains.Zeta3Domain1 import Zeta3Domain1
-from ramanujan.poly_domains.Zeta3Domain2 import Zeta3Domain2
-from ramanujan.poly_domains.Zeta5Domain import Zeta5Domain
-from ramanujan.poly_domains.Zeta7Domain import Zeta7Domain
-from ramanujan.poly_domains.CatalanDomain import CatalanDomain
-from ramanujan.poly_domains.ExplicitCartesianProductPolyDomain import ExplicitCartesianProductPolyDomain
+from modules.continued_fractions.domains.Zeta3Domain1 import Zeta3Domain1
+from modules.continued_fractions.domains.Zeta3Domain2 import Zeta3Domain2
+from modules.continued_fractions.domains.Zeta5Domain import Zeta5Domain
+from modules.continued_fractions.domains.Zeta7Domain import Zeta7Domain
+from modules.continued_fractions.domains.CatalanDomain import CatalanDomain
+from modules.continued_fractions.domains.ExplicitCartesianProductPolyDomain import ExplicitCartesianProductPolyDomain
 
 
 """

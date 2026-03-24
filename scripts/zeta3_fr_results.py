@@ -1,7 +1,7 @@
-from ramanujan.enumerators.FREnumerator import FREnumerator
-from ramanujan.poly_domains.Zeta3Domain2 import Zeta3Domain2
-from ramanujan.constants import g_const_dict
-from ramanujan.multiprocess_enumeration import multiprocess_enumeration
+from modules.continued_fractions.engines.FREnumerator import FREnumerator
+from modules.continued_fractions.domains.Zeta3Domain2 import Zeta3Domain2
+from modules.continued_fractions.targets import g_const_dict
+from modules.continued_fractions.multiprocess_enumeration import multiprocess_enumeration
 
 
 """

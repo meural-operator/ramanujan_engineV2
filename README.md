@@ -1,124 +1,210 @@
-# Ramanujan Engine V3: Mathematical Discovery Framework
+# Ramanujan Engine: Universal Distributed Scientific Computing Framework
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 [![PyTorch CUDA](https://img.shields.io/badge/PyTorch-CUDA_Ready-EE4C2C.svg)](https://pytorch.org/)
 [![Distributed Compute](https://img.shields.io/badge/Computing-Distributed_Edge-yellow.svg)](https://firebase.google.com/)
 
-A globally distributed, GPU-accelerated computing network bridging **Deep Reinforcement Learning (AlphaTensor MCTS)** with **PyTorch Tensor exhaustion** to mathematically discover novel continued fractions. Originating as a brute-force mathematical search, this repository has been heavily rewritten into a strictly-typed, plug-and-play **Modular Mathematical Framework**.
+A globally distributed, GPU-accelerated computing framework that orchestrates **Deep Reinforcement Learning** with **PyTorch Tensor exhaustion** to solve arbitrary scientific problems at scale. Continued Fractions discovery is just one of many pluggable modules — the framework generalizes to any problem domain.
 
-## 🌟 Key Modifications (V3 Architecture Refactor)
-This repository represents a massive paradigm shift from the V2 legacy codebase:
-1. **Abstract Interface Decoupling**: Decommissioned the monolithic hardcoded evaluator in favor of a universal 4-stage abstract plugin pipeline (`TargetConstant`, `BoundingStrategy`, `EnumeratorEngine`, `NetworkCoordinator`).
-2. **Deep Reinforcement Bounds Pruning**: Integrated an advanced **AlphaTensor MCTS (Monte Carlo Tree Search)** heuristic that maps physical trajectories and intelligently slices coordinate spaces prior to exhausting GPU memory.
-3. **Decentralized Zero-Loss Edge Nodes**: Stripped out legacy file-system tracking and deployed a hardened `sqlite3` edge cache that guarantees verified discoveries survive accidental power or network losses.
-4. **Frictionless Distribution**: Volunteers worldwide can now join the compute cluster with a strictly autonomous 1-click `.bat` deployment that handles Micromamba isolation, dependencies, credential generation, and mathematical table initializations transparently.
-5. **Research-Grade RL Training Suite**: Outfitted with a dedicated Curriculum Learning PPO cycle, asynchronous PyTorch scaling, and rigorous mathematical TensorBoard MLOps.
+---
+
+## 🌟 Key Modifications
+
+| Feature | Description |
+|---|---|
+| **Universal Pipeline Router** | A 4-stage abstract execution engine (`core/pipeline.py`) that decouples problem definition, search strategy, compute engine, and network coordination into fully interchangeable plugins. |
+| **Deep RL Bounds Pruning** | AlphaTensor MCTS heuristic (`modules/continued_fractions/math_ai/`) intelligently slices coordinate spaces before GPU exhaustion. |
+| **Modular Problem System** | Scientific problems are self-contained modules under `modules/`. Adding a new problem domain requires zero modifications to the core framework. |
+| **Zero-Loss Edge Caching** | Hardened `sqlite3` local cache guarantees verified discoveries survive power/network failures. |
+| **1-Click Deployment** | Windows volunteers join the cluster by double-clicking `run_node.bat` — handles Python isolation, dependencies, and credential generation automatically. |
+| **Research RL Training Suite** | Dedicated Curriculum Learning PPO pipeline with TensorBoard MLOps at `research_training/`. |
 
 ---
 
 ## 🏗️ Architecture & Hierarchy
 
-The V3 engine is heavily decoupled using the **Adapter and Strategy Software Patterns**. The high-level execution flow is managed autonomously by the `V3PipelineExecutor`.
+The framework is built on a strict separation between **core infrastructure** and **scientific modules**. The `UniversalPipelineRouter` orchestrates any combination of plugins without knowing their internals.
 
 ```mermaid
 graph TD
     classDef core fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#fff;
-    classDef abstract fill:#0984e3,stroke:#fff,stroke-width:2px,color:#fff;
-    classDef plugin fill:#00b894,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef iface fill:#0984e3,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef module fill:#00b894,stroke:#fff,stroke-width:2px,color:#fff;
+    classDef client fill:#fdcb6e,stroke:#2d3436,stroke-width:2px,color:#2d3436;
 
-    A[Network Coordinator API] ::: plugin -->|Delivers Boundary Space| B(V3PipelineExecutor) ::: core
-    
-    B -->|Hooks| C1(TargetConstant) ::: abstract
-    B -->|Pipes raw limits| C2(BoundingStrategy) ::: abstract
-    B -->|Sinks constrained space| C3(EnumeratorEngine) ::: abstract
-    
-    C1 -->|EulerMascheroniTarget| D1[Generates Precision Match Hash] ::: plugin
-    C2 -->|MCTSStrategy| D2[Prunes Search Volume via Neural RL] ::: plugin
-    C3 -->|CUDAEnumerator| D3[NVIDIA Tensor Accelerator] ::: plugin
-    
-    D3 -->|Yields Mathematical Hits| B
-    B -->|Synchronizes Global DB| A
+    subgraph "Core Framework"
+        PIPE[UniversalPipelineRouter] ::: core
+        I1[TargetProblem] ::: iface
+        I2[BoundingStrategy] ::: iface
+        I3[ExecutionEngine] ::: iface
+        I4[NetworkCoordinator] ::: iface
+    end
+
+    subgraph "Module: Continued Fractions"
+        M1[EulerMascheroniTarget] ::: module
+        M2[MCTSStrategy] ::: module
+        M3[CUDAEnumerator] ::: module
+        M4[FirebaseCoordinator] ::: module
+    end
+
+    subgraph "Module: Future Problem"
+        F1["ProteinFoldingTarget"] ::: module
+        F2["GeneticStrategy"] ::: module
+        F3["TPUEngine"] ::: module
+    end
+
+    CLIENT[Edge Node Client] ::: client -->|boots| PIPE
+    PIPE --> I1 --> M1
+    PIPE --> I2 --> M2
+    PIPE --> I3 --> M3
+    PIPE --> I4 --> M4
+
+    I1 -.-> F1
+    I2 -.-> F2
+    I3 -.-> F3
 ```
 
-### Component Relationships
-* **`TargetConstant`**: Injects absolute mathematical truth (e.g. `EulerMascheroniTarget`). Dictates floating-point threshold validations and generates required Look-Up-Tables (LHS keys).
-* **`BoundingStrategy`**: Sequence of optimization filters. `MCTSStrategy` currently hooks up to external PyTorch weights (`em_mcts.pt`) to physically restrict impossible dimensions from being searched.
-* **`EnumeratorEngine`**: The bare-metal exhaustive execution layer. `CUDAEnumerator` wraps the legacy 200-line highly optimized broadcasting Tensor matrices into a safe, encapsulated plugin.
-* **`NetworkCoordinator`**: `FirebaseCoordinator` safely extracts REST and Pyrebase hooks to fetch distributed payloads from the centralized cloud architecture.
+### Abstract Interfaces (`core/interfaces/`)
+
+| Interface | File | Purpose |
+|---|---|---|
+| `TargetProblem` | `base_problem.py` | Defines the mathematical/scientific problem — constants, verification logic, LHS hash generation |
+| `BoundingStrategy` | `base_strategy.py` | Search space optimization — AI pruning, heuristics, or brute-force passthrough |
+| `ExecutionEngine` | `base_engine.py` | Hardware-accelerated compute — CUDA tensors, CPU multiprocessing, TPU, etc. |
+| `NetworkCoordinator` | `base_coordinator.py` | Distributed coordination — work unit fetching, result submission, authentication |
+
+### Adding a New Scientific Module
+
+To add a new problem domain (e.g. `protein_folding`):
+
+```python
+# modules/protein_folding/target.py
+from core.interfaces.base_problem import TargetProblem
+
+class ProteinFoldingTarget(TargetProblem):
+    @property
+    def name(self): return "protein-folding"
+
+    def verify_match(self, a_coef, b_coef):
+        # Your domain-specific verification
+        ...
+```
+
+No changes to `core/` are required. The pipeline automatically routes through your new plugin.
 
 ---
 
-## 🗃️ Inventory of Problems & Features
-The framework successfully generalizes the following domain complexities:
-* **Euler-Mascheroni Constant Discovery**: Active high-precision execution domain attempting to find novel exact formulas mapping to `0.57721566...`
-* **Neural Actor-Critic Trajectories**: `math_ai` directory actively hosts state spaces and physical environment transitions specific to polynomial continued fractions. 
-* **Dynamic Grid Orchestration**: Synchronous and asynchronous mutually exclusive locks deployed via cloud infrastructure preventing thousands of GPU nodes from resolving overlapping blocks.
+## 🗃️ Available Modules
+
+| Module | Directory | Status | Description |
+|---|---|---|---|
+| **Continued Fractions** | `modules/continued_fractions/` | ✅ Active | GPU-accelerated discovery of novel GCF formulas for mathematical constants (Euler-Mascheroni, Zeta, Catalan, etc.) |
+| **RL Training Suite** | `research_training/` | ✅ Active | Curriculum PPO training for the AlphaTensor MCTS neural bounds pruner |
+
+*Future modules can be added by implementing the 4 core interfaces — see Architecture section above.*
 
 ---
 
 ## 🚀 Execution Guide
 
 ### 1-Click Deployment (Windows Volunteers)
-For individuals dedicating compute to the cluster:
-1. `git clone https://github.com/meural-operator/ramanujan_engineV2.git`
-2. `cd ramanujan_engineV2\ramanujan_client`
-3. Execute **`run_client.bat`**
-> *The script will natively secure an isolated Python 3.13 Micromamba container, automatically synthesize cloud credentials, seed the 30MB LHS lookup tables sequentially, and orbit your GPU into the live cluster.*
-
-### Manual Research Execution (Scientists & Engineers)
-**1. Environment Bootstrap:**
 ```bash
+git clone https://github.com/meural-operator/ramanujan_engineV2.git
+cd ramanujan_engineV2/clients
+# Double-click run_node.bat — or from terminal:
+.\run_node.bat
+```
+> The script auto-installs Python 3.13 via Micromamba, bootstraps all dependencies, generates Firebase credentials, seeds the LHS math tables, and launches the GPU compute node.
+
+### Manual Research Setup
+```bash
+# 1. Create conda environment
 conda env create -f setup/environment.yml
-# Or manually build Python 3.13 with PyTorch / MpMath
 conda activate curiosity
-```
 
-**2. Seed Legacy Verification Math Tables (One-Time):**
-```bash
+# 2. Seed mathematical verification tables (one-time, ~10s)
 python scripts/seed_euler_mascheroni_db.py
+
+# 3. Launch the edge compute node
+cd clients
+python edge_node.py
 ```
 
-**3. Initialize Edge Evaluation Node Pipeline:**
-```bash
-cd ramanujan_client
-python ramanujan_client.py
-```
-
-### Reinforcement Learning Module Training
-To mature the MCTS node network on new constants or wider polynomial bounds:
+### RL Neural Network Training
 ```bash
 cd research_training
 python train.py --episodes 50000 --max-depth 200
+
+# Monitor training metrics
+tensorboard --logdir runs/
 ```
-> Track performance dynamically via: `tensorboard --logdir runs/`
+
+### Running Tests
+```bash
+python -m unittest discover -s tests -v
+```
 
 ---
 
-## 📁 Repository Structure
-```text
-ramanujan_engineV2/
-├── ramanujan/                 # Core Research Framework
-│   ├── interfaces/            # V3 Abstract Base Classes (Contracts)
-│   ├── constants/             # Target Mathematical Plugins
-│   ├── enumerators/           # Hardware Acceleration Adapters
-│   ├── strategies/            # Pipeline Pruning Plugins
-│   ├── math_ai/               # Actor-Critic & AlphaTensor Brains
-│   ├── poly_domains/          # Cartesian Space Cartography
-│   └── coordinators/          # Network I/O Wrappers
-│
-├── ramanujan_client/          # Distributed Compute Node
-│   ├── engine_bridge/         # Decoupled V3PipelineExecutor Router
-│   ├── checkpoints/           # Compiled RL Weight Artifacts (.pt)
-│   ├── ramanujan_client.py    # Autonomous Setup and Cycle Hook
-│   └── run_client.bat         # Zero-Config Windows Deployer
-│
-├── research_training/         # PyTorch Dedicated Training Pipeline
-│   ├── train.py               # PPO Curriculum Matrix
-│   ├── config.yaml            # Hyperparameter Thresholds
-│   └── eval_mcts.py           # Physical Node Visualizer
-│
-├── scripts/                   # Structural DB / Task Handlers
-├── tests/                     # Strict Unit & Integration Protections
-└── README.md                  # Documentation (You are here)
+## 📁 Directory Structure
 ```
+ramanujan_engineV2/
+├── core/                              # Universal Framework Engine
+│   ├── interfaces/                    #   Abstract Base Classes
+│   │   ├── base_problem.py            #     TargetProblem interface
+│   │   ├── base_strategy.py           #     BoundingStrategy interface
+│   │   ├── base_engine.py             #     ExecutionEngine interface
+│   │   └── base_coordinator.py        #     NetworkCoordinator interface
+│   ├── coordinators/                  #   Network I/O Implementations
+│   │   └── firebase_coordinator.py    #     Firebase REST coordinator
+│   └── pipeline.py                    #   UniversalPipelineRouter
+│
+├── modules/                           # Scientific Problem Modules
+│   └── continued_fractions/           #   GCF Discovery Module
+│       ├── targets/                   #     Mathematical constants
+│       │   └── euler_mascheroni.py    #       Euler-Mascheroni plugin
+│       ├── engines/                   #     GPU/CPU enumerators
+│       │   ├── GPUEfficientGCFEnumerator.py
+│       │   ├── EfficientGCFEnumerator.py
+│       │   └── cuda_gcf.py           #       V4 adapter wrapper
+│       ├── domains/                   #     Polynomial search spaces
+│       ├── math_ai/                   #     AlphaTensor + MCTS models
+│       │   ├── models/               #       Actor-Critic networks
+│       │   ├── training/             #       RL training utilities
+│       │   └── strategies/           #       MCTSStrategy plugin
+│       └── utils/                     #     Convergence filters, etc.
+│
+├── clients/                           # Distributed Compute Nodes
+│   ├── edge_node.py                   #   Universal client entrypoint
+│   ├── run_node.bat                   #   1-click Windows deployer
+│   ├── checkpoints/                   #   Compiled RL weights (.pt)
+│   └── setup/                         #   Auto-installer scripts
+│
+├── research_training/                 # Dedicated RL Training Pipeline
+│   ├── train.py                       #   PPO curriculum trainer
+│   ├── config.yaml                    #   Hyperparameter config
+│   └── eval_mcts.py                   #   MCTS visualizer
+│
+├── scripts/                           # Utility & Seeder Scripts
+├── tests/                             # Unit & Integration Tests
+└── README.md
+```
+
+---
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/my-new-module`
+3. Implement your scientific module under `modules/your_module/`
+4. Add tests under `tests/`
+5. Submit a Pull Request
+
+For new problem domains, implement the 4 interfaces in `core/interfaces/` and register your module. The framework handles everything else.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.

@@ -2,7 +2,7 @@ import unittest
 import json
 import sys
 import os
-from ramanujan.poly_domains.Zeta5Domain import Zeta5Domain
+from modules.continued_fractions.domains.Zeta5Domain import Zeta5Domain
 from unittest.mock import patch
 from shutil import rmtree
 

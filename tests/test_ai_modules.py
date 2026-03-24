@@ -1,10 +1,10 @@
 import unittest
 import numpy as np
 import torch
-from ramanujan.math_ai.environments.EulerMascheroniEnvironment import EulerMascheroniEnvironment
-from ramanujan.math_ai.models.actor_critic import ActorCriticGCFNetwork
-from ramanujan.math_ai.agents.alpha_tensor_mcts import AlphaTensorMCTS
-from ramanujan.math_ai.training.replay_buffer import TrajectoryBuffer
+from modules.continued_fractions.math_ai.environments.EulerMascheroniEnvironment import EulerMascheroniEnvironment
+from modules.continued_fractions.math_ai.models.actor_critic import ActorCriticGCFNetwork
+from modules.continued_fractions.math_ai.agents.alpha_tensor_mcts import AlphaTensorMCTS
+from modules.continued_fractions.math_ai.training.replay_buffer import TrajectoryBuffer
 
 class TestMathAIModules(unittest.TestCase):
     

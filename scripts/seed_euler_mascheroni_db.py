@@ -13,8 +13,8 @@ Run this ONCE before distributing the node package.
 import os
 import sys
 import time
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.targets import g_const_dict
 
 def main():
     print("==================================================")

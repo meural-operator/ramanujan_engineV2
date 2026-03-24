@@ -24,10 +24,10 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from ramanujan.math_ai.models.actor_critic import ActorCriticGCFNetwork
-from ramanujan.math_ai.agents.alpha_tensor_mcts import AlphaTensorMCTS
-from ramanujan.math_ai.environments.EulerMascheroniEnvironment import EulerMascheroniEnvironment
-from ramanujan.math_ai.training.checkpoint import CheckpointManager
+from modules.continued_fractions.math_ai.models.actor_critic import ActorCriticGCFNetwork
+from modules.continued_fractions.math_ai.agents.alpha_tensor_mcts import AlphaTensorMCTS
+from modules.continued_fractions.math_ai.environments.EulerMascheroniEnvironment import EulerMascheroniEnvironment
+from modules.continued_fractions.math_ai.training.checkpoint import CheckpointManager
 
 def load_config(path='research_training/config.yaml'):
     with open(path, 'r') as f:

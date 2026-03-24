@@ -1,4 +1,4 @@
-import ramanujan.utils.mobius
+import modules.continued_fractions.utils.mobius
 
 
 class EfficientGCF(ramanujan.utils.mobius.EfficientGCF):

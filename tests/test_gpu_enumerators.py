@@ -1,9 +1,9 @@
 import unittest
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.enumerators.EfficientGCFEnumerator import EfficientGCFEnumerator
-from ramanujan.enumerators.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
-from ramanujan.poly_domains.Zeta3Domain1 import Zeta3Domain1
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.engines.EfficientGCFEnumerator import EfficientGCFEnumerator
+from modules.continued_fractions.engines.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
+from modules.continued_fractions.domains.Zeta3Domain1 import Zeta3Domain1
+from modules.continued_fractions.targets import g_const_dict
 from tests.conjectures_tests import get_testable_data
 
 class TestGPUEfficientGCFEnumerator(unittest.TestCase):

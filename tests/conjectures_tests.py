@@ -1,16 +1,16 @@
 import unittest
 import mpmath
-from ramanujan.LHSHashTable import LHSHashTable
-from ramanujan.enumerators.EfficientGCFEnumerator import EfficientGCFEnumerator
-from ramanujan.enumerators.RelativeGCFEnumerator import RelativeGCFEnumerator, gcf_calculation_to_precision, \
+from modules.continued_fractions.LHSHashTable import LHSHashTable
+from modules.continued_fractions.engines.EfficientGCFEnumerator import EfficientGCFEnumerator
+from modules.continued_fractions.engines.RelativeGCFEnumerator import RelativeGCFEnumerator, gcf_calculation_to_precision, \
     NotConverging
-from ramanujan.enumerators.FREnumerator import FREnumerator
-from ramanujan.poly_domains.CartesianProductPolyDomain import CartesianProductPolyDomain
-from ramanujan.poly_domains.Zeta3Domain1 import Zeta3Domain1
-from ramanujan.poly_domains.Zeta3Domain2 import Zeta3Domain2
-from ramanujan.poly_domains.Zeta5Domain import Zeta5Domain
-from ramanujan.constants import g_const_dict
-from ramanujan.multiprocess_enumeration import multiprocess_enumeration
+from modules.continued_fractions.engines.FREnumerator import FREnumerator
+from modules.continued_fractions.domains.CartesianProductPolyDomain import CartesianProductPolyDomain
+from modules.continued_fractions.domains.Zeta3Domain1 import Zeta3Domain1
+from modules.continued_fractions.domains.Zeta3Domain2 import Zeta3Domain2
+from modules.continued_fractions.domains.Zeta5Domain import Zeta5Domain
+from modules.continued_fractions.targets import g_const_dict
+from modules.continued_fractions.multiprocess_enumeration import multiprocess_enumeration
 
 
 def get_testable_data(refined_res_list):

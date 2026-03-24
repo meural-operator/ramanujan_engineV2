@@ -1,18 +1,18 @@
 import unittest
-from ramanujan.interfaces.base_constant import TargetConstant
-from ramanujan.interfaces.base_strategy import BoundingStrategy
-from ramanujan.interfaces.base_enumerator import EnumeratorEngine
-from ramanujan.interfaces.base_coordinator import NetworkCoordinator
+from core.interfaces.base_problem import TargetProblem
+from core.interfaces.base_strategy import BoundingStrategy
+from core.interfaces.base_engine import ExecutionEngine
+from core.interfaces.base_coordinator import NetworkCoordinator
 
 class TestAbstractInterfaces(unittest.TestCase):
     def test_target_constant_abc_enforcement(self):
-        class DummyConstant(TargetConstant):
+        class DummyConstant(TargetProblem):
             pass
         with self.assertRaises(TypeError):
             _ = DummyConstant()
 
     def test_target_constant_valid_implementation(self):
-        class ValidConstant(TargetConstant):
+        class ValidConstant(TargetProblem):
             @property
             def name(self): return "tester"
             @property
@@ -42,7 +42,7 @@ class TestAbstractInterfaces(unittest.TestCase):
         self.assertEqual(instance.prune_bounds([[1]], [[2]]), ([[1]], [[2]]))
 
     def test_enumerator_engine_abc_enforcement(self):
-        class DummyEngine(EnumeratorEngine):
+        class DummyEngine(ExecutionEngine):
             pass
         with self.assertRaises(TypeError):
             _ = DummyEngine()

@@ -3,11 +3,11 @@ import sys
 import argparse
 import pickle
 import lhs_generators
-import ramanujan.constants  # declares constants as sympy Singeltons, "not" used is intended
+import modules.continued_fractions.targets  # declares constants as sympy Singeltons, "not" used is intended
 
 from time import time
 from enumerate_over_signed_rcf import esma_search_wrapper
-from ramanujan.constants import g_const_dict
+from modules.continued_fractions.targets import g_const_dict
 
 
 def get_lhs_generator(generator_name, args):

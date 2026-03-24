@@ -7,8 +7,8 @@ import sympy
 from sympy import lambdify, Rational
 from massey import slow_massey
 from EfficientGCF import EfficientGCF
-from ramanujan.utils.mobius import GeneralizedContinuedFraction
-from ramanujan.utils.convergence_rate import calculate_convergence
+from modules.continued_fractions.utils.mobius import GeneralizedContinuedFraction
+from modules.continued_fractions.utils.convergence_rate import calculate_convergence
 
 """
 Some important terminology:
