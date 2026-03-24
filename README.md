@@ -456,7 +456,7 @@ If you use this framework in your research, please cite:
 ```bibtex
 @software{ramanujan_engine,
   title   = {Ramanujan: Universal Distributed Scientific Computing Framework},
-  author  = {Ashish Kumar},
+  author  = {Ashish Musale},
   year    = {2026},
   url     = {https://github.com/meural-operator/ramanujan-engine},
   note    = {GPU-accelerated distributed framework for mathematical constant
