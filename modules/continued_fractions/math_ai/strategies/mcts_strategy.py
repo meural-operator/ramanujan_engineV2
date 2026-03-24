@@ -61,6 +61,6 @@ class MCTSStrategy(BoundingStrategy):
             initial_state=self.env.reset(),
             original_a_range=raw_a_bounds,
             original_b_range=raw_b_bounds,
-            radius_multiplier=4.0
+            radius_multiplier=14.0
         )
         return a_refined, b_refined
