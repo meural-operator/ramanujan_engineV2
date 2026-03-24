@@ -1,40 +1,40 @@
-# Ramanujan Engine: Universal Distributed Scientific Computing Framework
+# Ramanujan: Universal Distributed Scientific Computing Framework
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/release/python-3130/)
 [![PyTorch CUDA](https://img.shields.io/badge/PyTorch-CUDA_Ready-EE4C2C.svg)](https://pytorch.org/)
 [![Distributed Compute](https://img.shields.io/badge/Computing-Distributed_Edge-yellow.svg)](https://firebase.google.com/)
 
-A globally distributed, GPU-accelerated computing framework that orchestrates **Deep Reinforcement Learning** with **PyTorch Tensor exhaustion** to solve arbitrary scientific problems at scale. Continued Fractions discovery is just one of many pluggable modules — the framework generalizes to any problem domain.
+A globally distributed, GPU-accelerated computing framework that orchestrates **Deep Reinforcement Learning** with **High-Performance Tensor Operations** to solve complex scientific problems at scale. While optimized for mathematical constant discovery via Continued Fractions, the framework is architected as a universal engine for any pluggable scientific domain.
 
 ---
 
-## 🌟 Key Modifications
+## 🌟 Core Features
 
 | Feature | Description |
-|---|---|
-| **Universal Pipeline Router** | A 4-stage abstract execution engine (`core/pipeline.py`) that decouples problem definition, search strategy, compute engine, and network coordination into fully interchangeable plugins. |
-| **Deep RL Bounds Pruning** | AlphaTensor MCTS heuristic (`modules/continued_fractions/math_ai/`) intelligently slices coordinate spaces before GPU exhaustion. |
-| **LLL/PSLQ Identity Resolver** | Automatic algebraic identity detection on every GPU hit — turns raw numerical matches into provable closed-form expressions using lattice basis reduction. |
-| **Modular Problem System** | Scientific problems are self-contained modules under `modules/`. Adding a new problem domain requires zero modifications to the core framework. |
-| **Problem-Namespaced Database** | Firebase paths auto-namespace under `/problems/{name}/` — multiple scientific problems can run on the same cluster simultaneously. |
-| **Compute Telemetry** | Per-node and per-problem atomic counters track total GPU hours, combinations evaluated, and contributor attribution. |
-| **Zero-Loss Edge Caching** | Hardened `sqlite3` local cache with generic schema guarantees verified discoveries survive power/network failures. |
-| **1-Click Deployment** | Windows volunteers join the cluster by double-clicking `run_node.bat` — handles Python isolation, dependencies, and credential generation automatically. |
-| **Research RL Training Suite** | Dedicated Curriculum Learning PPO pipeline with TensorBoard MLOps at `research_training/`. |
+| --- | --- |
+| **Universal Pipeline Router** | An abstract execution engine (`core/pipeline.py`) that decouples problem definition, search strategy, compute engine, and network coordination into interchangeable plugins. |
+| **Deep RL Search Optimization** | AlphaTensor MCTS heuristics (`modules/continued_fractions/math_ai/`) intelligently prune coordinate spaces to focus compute on high-probability regions. |
+| **LLL/PSLQ Identity Resolver** | Automatic algebraic identity detection — transforms numerical matches into proven closed-form expressions using lattice basis reduction. |
+| **Modular Problem System** | Scientific problems are self-contained modules. Expanding the framework to new domains requires no changes to core infrastructure. |
+| **Distributed Orchestration** | Dynamically namespaced Firebase synchronization allowing multiple independent scientific problems to be solved on a single global cluster. |
+| **Compute Telemetry** | Real-time tracking of GPU hours, combinations evaluated, and contributor attribution across the entire network. |
+| **Resilient Edge Caching** | Local `sqlite3` buffering ensures verified discoveries and compute progress survive hardware or network disruptions. |
+| **Plug-and-Play Deployment** | Automated bootstrapping handles environment isolation, dependencies, and cloud authentication for immediate compute participation. |
+| **Research-Grade Training** | Full MLOps individual training suite with Curriculum PPO and TensorBoard integration for heuristic refinement. |
 
 ---
 
 ## 🏗️ Architecture & Hierarchy
 
-The framework is built on a strict separation between **core infrastructure** and **scientific modules**. The `UniversalPipelineRouter` orchestrates any combination of plugins without knowing their internals.
+The framework enforces a strict separation between **core infrastructure** and **scientific modules**. The `UniversalPipelineRouter` orchestrates plugin life-cycles without domain-specific knowledge.
 
-![V4 Universal Platform Architecture](assets/architecture_v4.png)
+![Universal Platform Architecture](assets/architecture.png)
 
 ### Abstract Interfaces (`core/interfaces/`)
 
 | Interface | File | Purpose |
-|---|---|---|
+| --- | --- | --- |
 | `TargetProblem` | `base_problem.py` | Defines the mathematical/scientific problem — constants, verification logic, LHS hash generation |
 | `BoundingStrategy` | `base_strategy.py` | Search space optimization — AI pruning, heuristics, or brute-force passthrough |
 | `ExecutionEngine` | `base_engine.py` | Hardware-accelerated compute — CUDA tensors, CPU multiprocessing, TPU, etc. |
@@ -64,7 +64,7 @@ No changes to `core/` are required. The pipeline automatically routes through yo
 ## 🗃️ Available Modules
 
 | Module | Directory | Status | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **Continued Fractions** | `modules/continued_fractions/` | ✅ Active | GPU-accelerated discovery of novel GCF formulas for mathematical constants (Euler-Mascheroni, Zeta, Catalan, etc.) |
 | **RL Training Suite** | `research_training/` | ✅ Active | Curriculum PPO training for the AlphaTensor MCTS neural bounds pruner |
 
@@ -75,15 +75,17 @@ No changes to `core/` are required. The pipeline automatically routes through yo
 ## 🚀 Execution Guide
 
 ### 1-Click Deployment (Windows Volunteers)
+
 ```bash
-git clone https://github.com/meural-operator/ramanujan_engineV2.git
-cd ramanujan_engineV2/clients
+git clone https://github.com/meural-operator/ramanujan-engine.git
+cd ramanujan-engine/clients
 # Double-click run_node.bat — or from terminal:
 .\run_node.bat
 ```
 > The script auto-installs Python 3.13 via Micromamba, bootstraps all dependencies, generates Firebase credentials, seeds the LHS math tables, and launches the GPU compute node.
 
 ### Manual Research Setup
+
 ```bash
 # 1. Create conda environment
 conda env create -f setup/environment.yml
@@ -98,6 +100,7 @@ python edge_node.py
 ```
 
 ### RL Neural Network Training
+
 ```bash
 cd research_training
 python train.py --episodes 50000 --max-depth 200
@@ -107,6 +110,7 @@ tensorboard --logdir runs/
 ```
 
 ### Running Tests
+
 ```bash
 python -m unittest discover -s tests -v
 ```
@@ -117,19 +121,19 @@ python -m unittest discover -s tests -v
 
 > ✅ = Currently implemented &nbsp;&nbsp; 🔮 = Planned / Future extension
 
-```
-ramanujan_engineV2/
+```text
+ramanujan-engine/
 │
-├── core/                                        # ✅ Universal Framework Engine (problem-agnostic)
+├── core/                                        # ✅ Universal Framework (problem-agnostic)
 │   ├── __init__.py
-│   ├── pipeline.py                              #    UniversalPipelineRouter — 4-stage orchestrator
-│   ├── interfaces/                              #    Abstract Base Classes (contracts)
+│   ├── pipeline.py                              #    UniversalPipelineRouter — Core orchestrator
+│   ├── interfaces/                              #    Abstract Base Classes
 │   │   ├── base_problem.py                      #    TargetProblem — defines what to solve
-│   │   ├── base_strategy.py                     #    BoundingStrategy — how to prune search space
-│   │   ├── base_engine.py                       #    ExecutionEngine — hardware compute backend
+│   │   ├── base_strategy.py                     #    BoundingStrategy — search optimization
+│   │   ├── base_engine.py                       #    ExecutionEngine — compute backend
 │   │   └── base_coordinator.py                  #    NetworkCoordinator — distributed I/O
 │   └── coordinators/                            #    Network implementations
-│       └── firebase_coordinator.py              #    Firebase REST API coordinator
+│       └── firebase_coordinator.py              #    Firebase REST coordination
 │
 ├── modules/                                     # ✅ Scientific Problem Modules
 │   └── continued_fractions/                     # ✅ Generalized Continued Fraction Discovery
@@ -148,7 +152,7 @@ ramanujan_engineV2/
 │       │   ├── FREnumerator.py                  #    ✅ Multi-dimensional PSLQ enumerator
 │       │   ├── ParallelGCFEnumerator.py         #    ✅ ProcessPool parallel enumerator
 │       │   ├── RelativeGCFEnumerator.py         #    ✅ Relative convergence enumerator
-│       │   └── cuda_gcf.py                      #    ✅ V4 CUDAEnumerator adapter wrapper
+│       │   └── cuda_gcf.py                      #    ✅ CUDAEnumerator adapter wrapper
 │       │
 │       ├── domains/                             #    Polynomial search space definitions
 │       │   ├── AbstractPolyDomains.py           #    Base domain interface
@@ -217,7 +221,7 @@ ramanujan_engineV2/
 │   ├── train_rl_em.py                           #    Standalone RL training script
 │   ├── euler_mascheroni_ai_search.py            #    AI-guided search launcher
 │   ├── euler_mascheroni_research_grade.py       #    Research-grade evaluation
-│   ├── reset_v2_cursor.py                       #    Firebase cursor reset tool
+│   ├── reset_cursor.py                          #    Firebase cursor reset tool
 │   ├── multiprocessing_example.py               #    CPU parallelism demo
 │   ├── zeta3_fr_results.py                      #    ζ(3) result analysis
 │   ├── zeta3_infinite_family.py                 #    ζ(3) infinite family searcher
@@ -230,8 +234,8 @@ ramanujan_engineV2/
 │       └── zeta3_results.py                     #    ζ(3) results
 │
 ├── tests/                                       # ✅ Unit & Integration Tests
-│   ├── test_interfaces.py                       #    Core ABC contract tests
-│   ├── test_universal_pipeline.py               #    V4 pipeline integration tests
+│   ├── test_interfaces.py
+│   ├── test_universal_pipeline.py               #    Pipeline integration tests
 │   ├── test_lll_resolver.py                     #    LLL/PSLQ identity resolver tests (6/6)
 │   ├── test_ai_modules.py                       #    Actor-Critic network tests
 │   ├── test_asymptotic_filter.py                #    Worpitzky convergence tests
@@ -242,10 +246,9 @@ ramanujan_engineV2/
 │   ├── conjectures_tests.py                     #    Known conjecture validations
 │   └── boinc_scripts_tests.py                   #    BOINC integration tests
 │
-├── ESMA/                                        # ✅ Legacy reference implementation
-├── README.md                                    #    This file
-├── CHANGELOG.md                                 #    Version history
-└── requirements.txt                             #    Python dependencies
+├── README.md
+├── CHANGELOG.md
+└── requirements.txt
 ```
 
 ---
@@ -254,7 +257,7 @@ ramanujan_engineV2/
 
 The Firebase Realtime Database is **problem-namespaced** — multiple scientific problems run on the same cluster simultaneously without schema changes.
 
-```
+```text
 ramanujan-engine/
 │
 ├── nodes/                              ← ONE entry per volunteer (no duplication)
@@ -296,7 +299,7 @@ ramanujan-engine/
 ### Design Principles
 
 | Principle | Implementation |
-|---|---|
+| --- | --- |
 | **Zero Redundancy** | Node metadata (email, GPU, hostname) stored once in `/nodes/`. Results reference by `node_id` FK. |
 | **Atomic Counters** | Compute telemetry uses read-modify-write increments, never per-result duplication. |
 | **Problem Isolation** | Each problem type gets isolated `/tasks/`, `/results/`, `/stats/` — no cross-contamination. |
