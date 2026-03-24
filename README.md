@@ -15,8 +15,11 @@ A globally distributed, GPU-accelerated computing framework that orchestrates **
 |---|---|
 | **Universal Pipeline Router** | A 4-stage abstract execution engine (`core/pipeline.py`) that decouples problem definition, search strategy, compute engine, and network coordination into fully interchangeable plugins. |
 | **Deep RL Bounds Pruning** | AlphaTensor MCTS heuristic (`modules/continued_fractions/math_ai/`) intelligently slices coordinate spaces before GPU exhaustion. |
+| **LLL/PSLQ Identity Resolver** | Automatic algebraic identity detection on every GPU hit — turns raw numerical matches into provable closed-form expressions using lattice basis reduction. |
 | **Modular Problem System** | Scientific problems are self-contained modules under `modules/`. Adding a new problem domain requires zero modifications to the core framework. |
-| **Zero-Loss Edge Caching** | Hardened `sqlite3` local cache guarantees verified discoveries survive power/network failures. |
+| **Problem-Namespaced Database** | Firebase paths auto-namespace under `/problems/{name}/` — multiple scientific problems can run on the same cluster simultaneously. |
+| **Compute Telemetry** | Per-node and per-problem atomic counters track total GPU hours, combinations evaluated, and contributor attribution. |
+| **Zero-Loss Edge Caching** | Hardened `sqlite3` local cache with generic schema guarantees verified discoveries survive power/network failures. |
 | **1-Click Deployment** | Windows volunteers join the cluster by double-clicking `run_node.bat` — handles Python isolation, dependencies, and credential generation automatically. |
 | **Research RL Training Suite** | Dedicated Curriculum Learning PPO pipeline with TensorBoard MLOps at `research_training/`. |
 
@@ -181,6 +184,7 @@ ramanujan_engineV2/
 │       │
 │       └── utils/                               #    Mathematical utilities
 │           ├── asymptotic_filter.py             #    ✅ Worpitzky convergence filter
+│           ├── lll_identity_resolver.py         #    ✅ LLL/PSLQ algebraic identity resolver
 │           ├── convergence_rate.py              #    ✅ Digits-per-term calculator
 │           ├── mobius.py                        #    ✅ Möbius transformation engine (12 KB)
 │           ├── latex.py                         #    LaTeX formula renderer
@@ -225,9 +229,10 @@ ramanujan_engineV2/
 │       ├── pi_results.py                        #    π results
 │       └── zeta3_results.py                     #    ζ(3) results
 │
-├── tests/                                       # ✅ Unit & Integration Tests (22/23 passing)
+├── tests/                                       # ✅ Unit & Integration Tests
 │   ├── test_interfaces.py                       #    Core ABC contract tests
 │   ├── test_universal_pipeline.py               #    V4 pipeline integration tests
+│   ├── test_lll_resolver.py                     #    LLL/PSLQ identity resolver tests (6/6)
 │   ├── test_ai_modules.py                       #    Actor-Critic network tests
 │   ├── test_asymptotic_filter.py                #    Worpitzky convergence tests
 │   ├── test_gpu_enumerators.py                  #    GPU vs CPU parity tests
@@ -238,10 +243,78 @@ ramanujan_engineV2/
 │   └── boinc_scripts_tests.py                   #    BOINC integration tests
 │
 ├── ESMA/                                        # ✅ Legacy reference implementation
-├── documentation/                               # ✅ Research papers & notes
 ├── README.md                                    #    This file
 ├── CHANGELOG.md                                 #    Version history
 └── requirements.txt                             #    Python dependencies
+```
+
+---
+
+## 🗄️ Database Architecture
+
+The Firebase Realtime Database is **problem-namespaced** — multiple scientific problems run on the same cluster simultaneously without schema changes.
+
+```
+ramanujan-engine/
+│
+├── nodes/                              ← ONE entry per volunteer (no duplication)
+│   └── {node_id}/
+│       ├── hostname: "DIAT-Lab-01"
+│       ├── gpu_model: "RTX 4000 Ada"
+│       ├── os: "Windows 11"
+│       ├── python_version: "3.13.0"
+│       ├── last_heartbeat: 1711234999000
+│       ├── total_units_completed: 4217
+│       └── total_gpu_seconds: 89432.5
+│
+├── problems/                           ← Auto-namespaced per problem type
+│   └── {problem_name}/                 (e.g., "euler-mascheroni")
+│       ├── config/
+│       │   └── status: "active"        ("active" | "solved" | "paused")
+│       │
+│       ├── tasks/
+│       │   └── cursor/                 ← Atomic work assignment state
+│       │       ├── current_a_pos
+│       │       ├── current_b_pos
+│       │       └── degree
+│       │
+│       ├── results/                    ← Verified discoveries
+│       │   └── {push_id}/
+│       │       ├── hit_key
+│       │       ├── params              (JSON blob — problem-agnostic)
+│       │       ├── identity            (closed-form if LLL found one)
+│       │       ├── identity_method     ("pslq_basis" | "mpmath_identify")
+│       │       ├── identity_residual
+│       │       ├── node_id             ← FK to /nodes/ (no duplication)
+│       │       └── ts
+│       │
+│       └── stats/                      ← Aggregated compute telemetry
+│           ├── total_combinations_evaluated
+│           └── total_gpu_hours
+```
+
+### Design Principles
+
+| Principle | Implementation |
+|---|---|
+| **Zero Redundancy** | Node metadata (email, GPU, hostname) stored once in `/nodes/`. Results reference by `node_id` FK. |
+| **Atomic Counters** | Compute telemetry uses read-modify-write increments, never per-result duplication. |
+| **Problem Isolation** | Each problem type gets isolated `/tasks/`, `/results/`, `/stats/` — no cross-contamination. |
+| **Discovery Attribution** | Every result links to the contributing node. Query "who solved it" is trivial. |
+| **Lifecycle Control** | Set `/problems/{name}/config/status` to `"solved"` and all edge nodes gracefully stop. |
+
+### Local SQLite Backup
+
+The edge node maintains a local cache with a generic schema that works for any problem:
+
+```sql
+CREATE TABLE pending_hits (
+    problem_type TEXT,    -- e.g., "euler-mascheroni"
+    hit_key      TEXT,    -- constant-specific hash key
+    params_json  TEXT,    -- JSON blob of all hit parameters
+    node_id      TEXT,    -- this node's identifier
+    ts           REAL     -- Unix timestamp
+);
 ```
 
 ---
@@ -254,7 +327,7 @@ ramanujan_engineV2/
 4. Add tests under `tests/`
 5. Submit a Pull Request
 
-For new problem domains, implement the 4 interfaces in `core/interfaces/` and register your module. The framework handles everything else.
+For new problem domains, implement the 4 interfaces in `core/interfaces/` and register your module. The framework handles everything else — database namespacing, telemetry, and edge caching are fully automatic.
 
 ---
 
