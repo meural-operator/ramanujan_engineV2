@@ -26,69 +26,7 @@ A globally distributed, GPU-accelerated computing framework that orchestrates **
 
 The framework is built on a strict separation between **core infrastructure** and **scientific modules**. The `UniversalPipelineRouter` orchestrates any combination of plugins without knowing their internals.
 
-```mermaid
-flowchart TB
-    %% Styling Classes
-    classDef core fill:#2d3436,stroke:#74b9ff,stroke-width:2px,color:#fff
-    classDef interface fill:#0984e3,stroke:#fff,stroke-width:2px,color:#fff
-    classDef implementation fill:#00b894,stroke:#fff,stroke-width:2px,color:#fff
-    classDef future fill:#636e72,stroke:#fff,stroke-width:2px,color:#fff,stroke-dasharray: 5 5
-    classDef client fill:#fdcb6e,stroke:#2d3436,stroke-width:2px,color:#2d3436
-
-    %% Node Declarations
-    CLIENT(["Edge Node Client"])
-    
-    subgraph Framework [Central Core Framework]
-        direction TB
-        COORD["NetworkCoordinator\n(I/O Polling)"]
-        ROUTER{"UniversalPipelineRouter"}
-        
-        subgraph Contracts [Abstract Execution Contracts]
-            direction LR
-            PROB["TargetProblem"]
-            STRAT["BoundingStrategy"]
-            ENG["ExecutionEngine"]
-        end
-    end
-
-    subgraph GCF [Active Module: Continued Fractions]
-        direction LR
-        P_EM["EulerMascheroniTarget\n(Verification Logic)"]
-        P_MCTS["MCTSStrategy\n(Neural Bounds Pruning)"]
-        P_CUDA["CUDAEnumerator\n(GPU Tensor Exhaustion)"]
-    end
-
-    subgraph PROT [Future Module Concept: Protein Folding]
-        direction LR
-        F_TGT["ProteinStructureTarget"]
-        F_STR["GeneticHeuristicStrategy"]
-        F_ENG["TPU_ExecutionEngine"]
-    end
-
-    %% Execution and Data Flow
-    CLIENT -->|1. Boot Sequence| ROUTER
-    ROUTER -->|2. Payload Transport| COORD
-    ROUTER -->|3. Orchestrates Sequence| Contracts
-    
-    PROB -.->|Resolves into| P_EM
-    STRAT -.->|Resolves into| P_MCTS
-    ENG -.->|Resolves into| P_CUDA
-    
-    PROB -.->|Future Extensions| F_TGT
-    STRAT -.->|Future Extensions| F_STR
-    ENG -.->|Future Extensions| F_ENG
-
-    P_EM -->|Initial Boundaries| P_MCTS
-    P_MCTS -->|Refined Sub-Space| P_CUDA
-    P_CUDA -->|Mathematical Hits| ROUTER
-
-    %% Apply Styles
-    class CLIENT client
-    class ROUTER core
-    class COORD,PROB,STRAT,ENG interface
-    class P_EM,P_MCTS,P_CUDA implementation
-    class F_TGT,F_STR,F_ENG future
-```
+![V4 Universal Platform Architecture](assets/architecture_v4.png)
 
 ### Abstract Interfaces (`core/interfaces/`)
 
