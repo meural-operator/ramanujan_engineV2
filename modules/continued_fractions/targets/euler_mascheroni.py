@@ -25,7 +25,7 @@ class EulerMascheroniTarget(TargetProblem):
         import pickle
         import os
         
-        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
         db_path = os.path.join(repo_root, "euler_mascheroni.db")
         
         if os.path.exists(db_path):
