@@ -81,6 +81,25 @@ class UniversalPipelineRouter:
                 # 4. Zero-Loss Local Cache Intercept
                 if hits:
                     print(f"\n[!!!] CRITICAL: {len(hits)} VERIFIED MATHEMATICAL HITS DISCOVERED!")
+                    
+                    # 4a. LLL/PSLQ Algebraic Identity Resolution
+                    try:
+                        from modules.continued_fractions.utils.lll_identity_resolver import (
+                            resolve_identity, format_identity_report
+                        )
+                        print(f"[*] Running LLL/PSLQ integer relation detection on {len(hits)} hits...")
+                        for ht in hits:
+                            identity = resolve_identity(
+                                float(str(ht.get('lhs_key', '0')).replace('_', '.')),
+                                basis_constants={'gamma', 'pi', 'log2', 'zeta2', 'zeta3', '1'}
+                            )
+                            ht['identity'] = identity
+                            report = format_identity_report(ht, identity)
+                            print(report)
+                    except Exception as e:
+                        print(f"[!] LLL resolver unavailable ({e}), skipping identity resolution.")
+                    
+                    # 4b. Permanent local SQLite backup
                     print(f"[*] Writing to permanent local SQLite backup...")
                     for ht in hits:
                         c.execute("INSERT INTO pending_hits VALUES (?, ?, ?, ?, ?, ?)", 
