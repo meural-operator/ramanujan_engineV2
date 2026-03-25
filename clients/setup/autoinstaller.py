@@ -49,7 +49,9 @@ def install_dependencies(env_dir, has_gpu):
         "sympy==1.14.0",
         "tqdm",
         "requests", # Exclusively required for Ramanujan@Home Client-Server handshakes
-        "pyrebase4"
+        "pyrebase4",
+        "pybloom_live",
+        "ortools"
     ]
     
     print(f"[*] Installing base math dependencies: {', '.join(base_packages)}")
