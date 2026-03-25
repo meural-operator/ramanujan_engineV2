@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 import mpmath
 from mpmath import mpf as dec
 from modules.continued_fractions.utils.mobius import GeneralizedContinuedFraction
@@ -29,6 +28,7 @@ def calculate_convergence(gcf: GeneralizedContinuedFraction, reference, plot=Fal
             break
         log_diff.append(mpmath.log10(abs(part_convergent - reference)))
     if plot:
+        import matplotlib.pyplot as plt
         plt.plot(range(length), log_diff)
         plt.title(title)
         plt.show()

@@ -2,7 +2,6 @@ import numpy as np
 from typing import List
 import time
 import mpmath
-import matplotlib.pyplot as plt
 from sympy import lambdify, var, Poly
 
 
@@ -105,6 +104,7 @@ def iter_series_items_from_compact_poly(poly_coef, max_runs, start_n=1):
 
 
 def plot_gcf_convergens(an_poly_coef, bn_poly_coef, max_iters, divide_interval=101, label=None):
+    import matplotlib.pyplot as plt  # Lazy import — only needed for visualization
     computed_values = []
     label = f'an {an_poly_coef} bn {bn_poly_coef}' if not label else label
 
