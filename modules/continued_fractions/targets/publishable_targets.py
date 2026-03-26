@@ -24,29 +24,37 @@ class AbstractConstantTarget(TargetProblem):
     def precision(self) -> int:
         return g_N_verify_compare_length
 
-    def generate_lhs_hash_table(self, depth: int) -> dict:
+    def generate_lhs_hash_table(self, depth: int):
+        """
+        Returns a fully initialized LHSHashTable object.
+        If the .db file already exists on disk, the constructor loads it natively.
+        If not, the constructor generates the enumeration and writes it to disk.
+        Either way, the returned object is a valid LHSHashTable ready for GPU matching.
+        """
+        from modules.continued_fractions.LHSHashTable import LHSHashTable
+        
         repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
         db_path = os.path.join(repo_root, self._db_filename)
         
-        if os.path.exists(db_path):
-            with open(db_path, 'rb') as f:
-                return pickle.load(f)
-        else:
-            print(f"[*] Missing local LHS Database for [{self._name}].")
+        if not os.path.exists(db_path) or os.path.getsize(db_path) == 0:
+            print(f"[*] Missing or corrupt LHS Database for [{self._name}].")
             print(f"[*] Dynamically generating {self._db_filename} (Depth: {depth}). This may take ~10-30 seconds...")
-            from modules.continued_fractions.LHSHashTable import LHSHashTable
+            # Clean up corrupt 0-byte files
+            if os.path.exists(db_path) and os.path.getsize(db_path) == 0:
+                os.remove(db_path)
+        else:
+            print(f"[*] Loading pre-built LHS Database: {self._db_filename}")
             
-            # The constructor of LHSHashTable builds possibilities, but we must save the object itself
-            lhs = LHSHashTable(
-                name=db_path, 
-                search_range=depth, 
-                const_vals=[self._val]
-            )
-            lhs.save()
-            
-            # Read back from disk to ensure it's structured identically to pre-loaded tables
-            with open(db_path, 'rb') as f:
-                return pickle.load(f)
+        # LHSHashTable constructor handles both generation and loading natively.
+        # It writes the dict to <name>.db and then sets self.lhs_possibilities = None
+        # to free memory. The object retains the bloom filter for fast 'in' checks,
+        # and will re-load the dict from disk on demand via _get_by_key().
+        lhs = LHSHashTable(
+            name=db_path, 
+            search_range=depth, 
+            const_vals=[self._val]
+        )
+        return lhs
 
     def verify_match(self, a_coef: tuple, b_coef: tuple) -> float:
         """

@@ -28,17 +28,23 @@ class CUDAEnumerator(ExecutionEngine):
         domain._setup_metadata()
         
         # Load arbitrary generalized LHS keys from the TargetProblem implementation
-        lhs_dict = target.generate_lhs_hash_table(depth=30)
+        # generate_lhs_hash_table now returns a fully initialized LHSHashTable object
+        lhs_obj = target.generate_lhs_hash_table(depth=30)
         
-        # Synthesize V2 LHSHashTable backward compatibility cleanly
         try:
             target_val = target._val
         except AttributeError:
             target_val = 0.577215  # generic fallback
-            
-        legacy_lhs = LHSHashTable("", 30, [target_val])
-        legacy_lhs.lhs_possibilities = lhs_dict
         
+        # If generate_lhs_hash_table already returns an LHSHashTable, use it directly.
+        # Otherwise, wrap it for backward compatibility with targets that return raw dicts.
+        if isinstance(lhs_obj, LHSHashTable):
+            legacy_lhs = lhs_obj
+        else:
+            # Backward compatibility: wrap raw dict in LHSHashTable shell
+            legacy_lhs = LHSHashTable("", 30, [target_val])
+            legacy_lhs.lhs_possibilities = lhs_obj
+            
         enumerator = GPUEfficientGCFEnumerator(
             legacy_lhs,
             domain,

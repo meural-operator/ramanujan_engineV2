@@ -1,3 +1,14 @@
+"""
+Ramanujan@Home: Local Continuous Discovery Miner (High-Throughput)
+
+This script bypasses the distributed Firebase network to perform
+consecutive, immediate brute-force search blocks on known mathematical constants.
+It leverages 100% of the local GPU's tensor-core bandwidth.
+
+Supports two operational modes:
+  1. NEURAL MCTS MODE: Uses the RL bounding network to intelligently prune the search space
+  2. BRUTE FORCE MODE: Pure exhaustive Cartesian product search (wider coverage, slower per target)
+"""
 import sys
 import os
 import time
@@ -9,41 +20,52 @@ if repo_root not in sys.path:
 
 from modules.continued_fractions.targets.publishable_targets import PiTarget, ETarget, CatalanTarget
 from modules.continued_fractions.engines.GPUEfficientGCFEnumerator import GPUEfficientGCFEnumerator
-from modules.continued_fractions.domains.NeuralMCTSPolyDomain import NeuralMCTSPolyDomain
+from modules.continued_fractions.domains.CartesianProductPolyDomain import CartesianProductPolyDomain
 
-def execute_discovery_run(target_instance, a_degree=3, b_degree=3, bound_radius=15, mcts_sims=500):
+USE_NEURAL_MCTS = True  # Uses RL-guided bound pruning via AlphaTensor MCTS
+
+def execute_discovery_run(target_instance, a_degree=2, b_degree=2, bound_radius=15, 
+                          mcts_sims=500, use_mcts=False):
     print("\n" + "=" * 70)
     print(f"   TARGET LOCK: Searching for [{target_instance.name.upper()}] Discoveries")
     print("=" * 70)
     
     # 1. Fetch or Auto-Generate the LHS Hash Table
+    # This returns a fully initialized LHSHashTable object with bloom filter
+    # and correct s_name pointer for disk-backed dictionary access.
     print(f"[1/4] Retrieving or building Mobius transform Hash Table...")
-    # Dynamic depth constraint to preserve RAM. Depth=20 guarantees millions of hits, 
-    # but generates fast.
-    lhs = target_instance.generate_lhs_hash_table(depth=20)
-    print(f"       LHS table ready.")
+    lhs_obj = target_instance.generate_lhs_hash_table(depth=20)
+    print(f"       LHS table ready. Bloom filter loaded. Disk cache: {lhs_obj.s_name}")
     
-    # 2. Setup the Deep Reinforcement Learning Native Bound Evaluator
-    print("[2/4] Running Deep Reinforcement Learning (Neural MCTS) to bound search scope...")
-    poly_search_domain = NeuralMCTSPolyDomain(
-        a_deg=a_degree, a_coef_range=[-bound_radius, bound_radius],
-        b_deg=b_degree, b_coef_range=[-bound_radius, bound_radius],
-        target_val=target_instance._val,
-        mcts_simulations=mcts_sims  
-    )
+    # 2. Setup Polynomial Search Domain
+    if use_mcts:
+        print("[2/4] Running Deep Reinforcement Learning (Neural MCTS) to bound search scope...")
+        from modules.continued_fractions.domains.NeuralMCTSPolyDomain import NeuralMCTSPolyDomain
+        poly_search_domain = NeuralMCTSPolyDomain(
+            a_deg=a_degree, a_coef_range=[-bound_radius, bound_radius],
+            b_deg=b_degree, b_coef_range=[-bound_radius, bound_radius],
+            target_val=target_instance._val,
+            mcts_simulations=mcts_sims  
+        )
+    else:
+        print("[2/4] Using pure brute-force Cartesian product (full combinatorial coverage)...")
+        poly_search_domain = CartesianProductPolyDomain(
+            a_deg=a_degree, a_coef_range=[-bound_radius, bound_radius],
+            b_deg=b_degree, b_coef_range=[-bound_radius, bound_radius]
+        )
     
-    print(f"       AI-Optimized a_n structural bounds: {poly_search_domain.a_coef_range}")
-    print(f"       AI-Optimized b_n structural bounds: {poly_search_domain.b_coef_range}")
+    print(f"       a_n polynomial bounds: {poly_search_domain.a_coef_range}")
+    print(f"       b_n polynomial bounds: {poly_search_domain.b_coef_range}")
     
     an_count = poly_search_domain.get_an_length()
     bn_count = poly_search_domain.get_bn_length()
     total_evals = an_count * bn_count
-    print(f"       Refined Tensor Iteration Space: {an_count:,} × {bn_count:,} = {total_evals:,} GPU targeted GCF evaluations")
+    print(f"       Tensor Iteration Space: {an_count:,} x {bn_count:,} = {total_evals:,} GPU targeted GCF evaluations")
     
-    # 3. Deploy GPU enumerator
+    # 3. Deploy GPU enumerator with the properly initialized LHSHashTable object
     print("\n[3/4] Initializing GPU-accelerated GCF enumerator...")
     enumerator = GPUEfficientGCFEnumerator(
-        lhs,
+        lhs_obj,
         poly_search_domain,
         [target_instance._val]
     )
@@ -76,6 +98,10 @@ def main():
     print(" This script bypasses the distributed Firebase network to perform")
     print(" consecutive, immediate brute-force search blocks on known constants.")
     print(" It leverages 100% of your local GPU's tensor-core boundaries.")
+    if USE_NEURAL_MCTS:
+        print(" Mode: NEURAL MCTS (RL-guided bound pruning)")
+    else:
+        print(" Mode: BRUTE FORCE (full Cartesian product enumeration)")
     
     # Configure the generic mathematically publishable targets
     targets = [
@@ -84,19 +110,21 @@ def main():
         PiTarget()
     ]
     
-    # Let the miner cycle through them endlessly or sequentially
+    # Let the miner cycle through them sequentially
     total_start = time.time()
     all_discoveries = 0
     
     for target in targets:
-        # We use a smaller bounds search (d=2, R=25 or d=3, R=15) so it completes in hours instead of weeks
-        # You can scale this up arbitrarily based on hardware.
+        # Degree 2 with radius 25 gives (50+1)^3 = 132,651 per polynomial side
+        # Total: ~17.6 billion combinations (will be chunked by GPU VRAM)
+        # For faster initial runs, use smaller radius (e.g., 10-15)
         found = execute_discovery_run(
             target_instance=target, 
             a_degree=2, 
             b_degree=2, 
             bound_radius=25, 
-            mcts_sims=500
+            mcts_sims=500,
+            use_mcts=USE_NEURAL_MCTS
         )
         all_discoveries += len(found)
         

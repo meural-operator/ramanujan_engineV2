@@ -159,7 +159,7 @@ class AlphaTensorMCTS:
             priors = (1 - self.dirichlet_epsilon) * priors + self.dirichlet_epsilon * noise
 
         for i, (action, prior) in enumerate(zip(actions, priors)):
-            child = MCTSNode(state=node.state.copy(), parent=node,
+            child = MCTSNode(state=np.array(node.state, dtype=np.float32), parent=node,
                              action_from_parent=action, prior=float(prior))
             node.children[i] = child
 
@@ -193,14 +193,14 @@ class AlphaTensorMCTS:
         path.reverse()
 
         self.env.reset()
-        obs = initial_state.copy()
+        obs = np.array(initial_state, dtype=np.float32)
         for action in path:
             obs, _, done, _ = self.env.step(action)
             if done:
                 break
 
         # The leaf's "state" is now the current env observation
-        node.state = obs.copy()
+        node.state = np.array(obs, dtype=np.float32)
 
         # Get neural value estimate (no random rollout needed — critic IS the value function)
         _, _, value = self._get_policy_value(obs)
@@ -220,7 +220,7 @@ class AlphaTensorMCTS:
         self._q_max = float('-inf')
 
         # Build root node
-        root = MCTSNode(state=initial_state.copy())
+        root = MCTSNode(state=np.array(initial_state, dtype=np.float32))
 
         for _ in range(self.num_simulations):
             # 1. SELECT
@@ -232,10 +232,10 @@ class AlphaTensorMCTS:
                 # After expansion, select the first child for evaluation
                 if leaf.children:
                     first_child = list(leaf.children.values())[0]
-                    first_child.state = leaf.state.copy()
+                    first_child.state = np.array(leaf.state, dtype=np.float32)
                     # Quick env step to get child state
                     obs, reward, done, _ = self.env.step(first_child.action_from_parent)
-                    first_child.state = obs.copy()
+                    first_child.state = np.array(obs, dtype=np.float32)
                     first_child.is_terminal = done
                     # 3. EVALUATE via critic
                     _, _, value = self._get_policy_value(obs)
