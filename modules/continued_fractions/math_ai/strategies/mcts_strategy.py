@@ -56,11 +56,21 @@ class MCTSStrategy(BoundingStrategy):
             return raw_a_bounds, raw_b_bounds
             
         mcts = AlphaTensorMCTS(env=self.env, network=self.network, num_simulations=10)
+        # Calculate the physical width of the incoming hardware block
+        base_width = 10
+        if raw_a_bounds and len(raw_a_bounds) > 0:
+            base_width = max(1, raw_a_bounds[0][1] - raw_a_bounds[0][0])
+            
+        # Dynamically scale the AI's maximum scalar expansion range 
+        # to roughly 65% of the block's physical limit. 
+        # This completely untethers the AI, allowing it to mathematically push the GPU 
+        # up to 100% of the block size during exploration, or collapse it during exploitation.
+        dynamic_multiplier = max(2.0, base_width * 0.65)
         
         a_refined, b_refined = mcts.get_action_for_bounds(
             initial_state=self.env.reset(),
             original_a_range=raw_a_bounds,
             original_b_range=raw_b_bounds,
-            radius_multiplier=14.0
+            radius_multiplier=dynamic_multiplier
         )
         return a_refined, b_refined
