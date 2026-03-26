@@ -162,10 +162,14 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
         # DYNAMIC VRAM BATCH ALLOCATION
         # ─────────────────────────────────────────────────────────
         if self.device.type == 'cuda':
-            # Query the hardware for exact free and total memory remaining
-            free_mem, _ = torch.cuda.mem_get_info()
+            # Force PyTorch to release its cached tensor memory back to the OS
+            # so we don't accidentally detect 0 free memory on the second loop.
+            torch.cuda.empty_cache()
             
-            # Target 80% of FREE memory to leave headroom for OS and pytorch caching
+            # Query the hardware for exact free and total memory remaining
+            free_mem, total_mem = torch.cuda.mem_get_info()
+            
+            # Target 80% of TRUE free memory
             usable_vram_bytes = free_mem * 0.8
             
             # Profile the algorithm's actual byte-cost per equation:
@@ -296,5 +300,9 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
 
         if verbose:
             print(f"\nCreated results after {time() - start:.2f}s. Found {len(refined_results)} final verified matches.")
+            
+        # Clean up massive tensor footprints natively
+        if self.device.type == 'cuda':
+            torch.cuda.empty_cache()
             
         return refined_results
