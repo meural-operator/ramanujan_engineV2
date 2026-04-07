@@ -1,3 +1,9 @@
+"""
+Symbolic Regression for GCF Sequence Discovery.
+
+Uses PySR to discover closed-form analytical expressions for a(n) and b(n) 
+sequences from *actual* discovered GCF coefficient data, not synthetic curves.
+"""
 import numpy as np
 try:
     from pysr import PySRRegressor
@@ -8,7 +14,7 @@ class ParamSymbolicRegressor:
     """
     Integrates PySR to perform symbolic regression on successful generating sequences.
     Instead of manually crafting polynomial domains, PySR discovers
-    analytical functional forms that maximize the discovery of convergent GCFs.
+    analytical functional forms for a(n) and b(n) from real GCF data.
     """
     def __init__(self, iterations=40):
         if PySRRegressor is None:
@@ -34,18 +40,59 @@ class ParamSymbolicRegressor:
         self.model.fit(X, sequence_values)
         return self.model.sympy()
 
-    def discover_domain(self, target_constant_vals: list, max_depth: int = 50):
+    def discover_from_gcf_hit(self, a_values: list, b_values: list):
         """
-        Given a target mathematical constant, attempt to build a functional
-        approximation of the sequence convergents using PySR.
-        We generate a pseudo-sequence converging to one of the constants 
-        and fit the PySR model to extract a symbolic form.
-        """
-        if not target_constant_vals:
-            raise ValueError("Must provide at least one target constant.")
-
-        # Generates a pseudo-sequence converging asymptotically to the target
-        n_indices = np.arange(1, max_depth + 1)
-        synthetic_trace = np.array([float(target_constant_vals[0]) * (1.0 - 1.0/n) for n in n_indices])
+        Given actual a(n) and b(n) coefficient sequences extracted from a confirmed
+        GCF discovery, use PySR to find closed-form symbolic expressions for each.
         
-        return self.fit_sequence(n_indices, synthetic_trace)
+        This is the correct way to use symbolic regression in the Ramanujan Machine:
+        the GPU sweep finds raw integer coefficient sequences that produce convergent
+        GCFs, and this method extracts the underlying mathematical pattern.
+        
+        Args:
+            a_values: List of actual a(n) values from a discovered GCF [a(0), a(1), ...]
+            b_values: List of actual b(n) values from a discovered GCF [b(0), b(1), ...]
+            
+        Returns:
+            Tuple of (a_n_symbolic, b_n_symbolic) sympy expressions, or None if fitting fails.
+        """
+        if not a_values or not b_values:
+            raise ValueError("Must provide non-empty a(n) and b(n) sequences from a real GCF hit.")
+        
+        n_a = np.arange(len(a_values))
+        n_b = np.arange(len(b_values))
+        
+        a_sym = self.fit_sequence(n_a, np.array(a_values, dtype=np.float64))
+        
+        # Create a fresh model for b(n) to avoid interference
+        b_model = PySRRegressor(
+            niterations=self.model.niterations,
+            binary_operators=["+", "*", "-", "/"],
+            unary_operators=["square", "cube", "exp", "inv(x) = 1/x"],
+            loss="loss(prediction, target) = (prediction - target)^2",
+            maxsize=15,
+        )
+        b_model.fit(n_b.reshape(-1, 1), np.array(b_values, dtype=np.float64))
+        b_sym = b_model.sympy()
+        
+        return a_sym, b_sym
+
+    def discover_domain(self, a_values: list, b_values: list, max_depth: int = 50):
+        """
+        Given actual coefficient sequences from a discovered GCF, find symbolic forms.
+        
+        This replaces the previous implementation which fabricated a synthetic curve
+        c*(1-1/n) — that curve had no mathematical relationship to actual GCF 
+        recurrences and produced meaningless symbolic fits.
+        
+        Args:
+            a_values: List of actual a(n) coefficient values from a confirmed GCF hit.
+            b_values: List of actual b(n) coefficient values from a confirmed GCF hit.
+            max_depth: Maximum number of terms to use for fitting (truncates if longer).
+            
+        Returns:
+            Tuple of (a_n_expr, b_n_expr) as sympy expressions.
+        """
+        a_vals = a_values[:max_depth]
+        b_vals = b_values[:max_depth]
+        return self.discover_from_gcf_hit(a_vals, b_vals)

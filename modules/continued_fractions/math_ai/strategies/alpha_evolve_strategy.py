@@ -76,8 +76,12 @@ class AlphaEvolveStrategy(BoundingStrategy):
     
     def _extract_bounds_from_program(self, prog, raw_a_bounds, raw_b_bounds):
         """
-        Analyze a discovered program's numerical outputs and estimate 
-        polynomial coefficient bounds that would reproduce similar sequences.
+        Analyze a discovered program by fitting its output to polynomial curves
+        using numpy polyfit, then using the fitted coefficients as search bounds.
+        
+        This correctly handles programs like `lambda n: n**2 + 3*n + 1` by
+        extracting coefficients [1, 3, 1] instead of sampling outputs at large n
+        (which would give inflated values like 400+ and corrupt the bounds).
         """
         a_func = compile_lambda(prog.a_n)
         b_func = compile_lambda(prog.b_n)
@@ -85,31 +89,53 @@ class AlphaEvolveStrategy(BoundingStrategy):
         if a_func is None or b_func is None:
             return raw_a_bounds, raw_b_bounds
         
-        # Sample the program at several n values
-        n_samples = 20
+        # Sample the program at several n values for polyfit
+        n_samples = 30
         a_vals = evaluate_sequence(a_func, n_samples)
         b_vals = evaluate_sequence(b_func, n_samples)
         
         if a_vals is None or b_vals is None:
             return raw_a_bounds, raw_b_bounds
         
-        # Use the range of generated values to inform polynomial bounds
-        # This is a rough heuristic — the evolved program tells us what
-        # coefficient magnitudes are mathematically productive
-        a_max = max(abs(v) for v in a_vals if abs(v) < 1e6)
-        b_max = max(abs(v) for v in b_vals if abs(v) < 1e6)
+        n_array = np.arange(n_samples, dtype=np.float64)
+        a_deg = len(raw_a_bounds) - 1  # polynomial degree from bounds structure
+        b_deg = len(raw_b_bounds) - 1
         
-        a_radius = max(3, int(a_max * 1.5))
-        b_radius = max(3, int(b_max * 1.5))
+        try:
+            # Fit polynomial of the same degree as the search domain
+            a_coeffs = np.polyfit(n_array, np.array(a_vals), deg=min(a_deg, 5))
+            b_coeffs = np.polyfit(n_array, np.array(b_vals), deg=min(b_deg, 5))
+        except (np.linalg.LinAlgError, ValueError):
+            return raw_a_bounds, raw_b_bounds
+        
+        # Use fitted coefficients to build tight integer bounds
+        # Pad or truncate to match the expected number of coefficients
+        a_coeffs_int = [int(round(c)) for c in a_coeffs]
+        b_coeffs_int = [int(round(c)) for c in b_coeffs]
+        
+        # Pad with zeros if polyfit returned fewer coefficients
+        while len(a_coeffs_int) < len(raw_a_bounds):
+            a_coeffs_int.append(0)
+        while len(b_coeffs_int) < len(raw_b_bounds):
+            b_coeffs_int.append(0)
+        
+        # Build refined bounds: ±margin around each extracted coefficient
+        margin = 3  # Search ±3 around each fitted coefficient
         
         refined_a = []
-        for lo, hi in raw_a_bounds:
-            mid = (lo + hi) // 2
-            refined_a.append([max(lo, mid - a_radius), min(hi, mid + a_radius)])
+        for i, (lo, hi) in enumerate(raw_a_bounds):
+            if i < len(a_coeffs_int):
+                center = a_coeffs_int[i]
+                refined_a.append([max(lo, center - margin), min(hi, center + margin)])
+            else:
+                refined_a.append([lo, hi])
         
         refined_b = []
-        for lo, hi in raw_b_bounds:
-            mid = (lo + hi) // 2
-            refined_b.append([max(lo, mid - b_radius), min(hi, mid + b_radius)])
+        for i, (lo, hi) in enumerate(raw_b_bounds):
+            if i < len(b_coeffs_int):
+                center = b_coeffs_int[i]
+                refined_b.append([max(lo, center - margin), min(hi, center + margin)])
+            else:
+                refined_b.append([lo, hi])
         
         return refined_a, refined_b

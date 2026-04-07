@@ -8,7 +8,7 @@ Implements a proper MCTS tree with:
   - Global min-max Q normalization for numerically stable UCB
   - O(1) state restoration via environment snapshots (no path replay)
   - Policy improvement: action selected proportionally to visit count distribution
-  - Integration with PPO-trained ActorCriticGCFNetwork for prior probabilities and value estimates
+  - Gaussian log-probability priors for principled UCB exploration weighting
 """
 import torch
 import numpy as np
@@ -63,11 +63,11 @@ class AlphaTensorMCTS:
     """
     Neural-Guided MCTS for GCF Discovery.
     
-    The search loop:
+    The search loop (standard AlphaZero):
       1. SELECT: traverse tree using UCB-PUCT until a leaf node is reached
-      2. EXPAND: generate n_actions candidate actions from the neural policy prior
-      3. EVALUATE: use critic to estimate V(leaf) without rollout (zero-latency)
-      4. BACKUP: propagate V up through visited nodes
+      2. EXPAND: generate n_actions candidate children from the neural policy prior
+      3. EVALUATE: use critic V(leaf) as the value estimate
+      4. BACKUP: propagate V from LEAF upward through the full ancestor path to root
     
     State Management:
       Each MCTSNode stores an env_state snapshot captured at expansion time.
@@ -75,26 +75,20 @@ class AlphaTensorMCTS:
       restoring a node's state is a single O(1) set_state() call instead of
       replaying every ancestor action from root.
     
+    Prior Computation:
+      Priors are computed as the Gaussian log-probability of each sampled action
+      under the policy distribution N(mean, std). This properly differentiates
+      actions close to the policy mean (high prior → less exploration needed)
+      from outlier actions (low prior → explored only when exploitation is saturated).
+    
     After `num_simulations` iterations, the visit count distribution at the root
     defines the improved policy π̂(a|s_root) used for PPO training targets.
-    
-    The best single action for inference is argmax(visit_counts).
     """
 
     def __init__(self, env: AbstractRLEnvironment, network: ActorCriticGCFNetwork,
                  num_simulations: int = 200, c_puct: float = 1.5,
                  dirichlet_alpha: float = 0.3, dirichlet_epsilon: float = 0.25,
                  n_actions: int = 8):
-        """
-        Args:
-            env: The RL environment (Euler-Mascheroni or generic GCF env)
-            network: Trained ActorCriticGCFNetwork
-            num_simulations: Number of MCTS rollouts per search call
-            c_puct: UCB exploration constant (higher = more exploration)
-            dirichlet_alpha: Concentration parameter for root Dirichlet noise
-            dirichlet_epsilon: Mixing weight of Dirichlet noise at root
-            n_actions: Number of candidate actions to expand at each leaf
-        """
         self.env = env
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.network = network.to(self.device)
@@ -109,6 +103,9 @@ class AlphaTensorMCTS:
         # Global min/max for Q normalization (updated during tree search)
         self._q_min = float('inf')
         self._q_max = float('-inf')
+        
+        # Cache the policy std for search radius computation (Issue #7)
+        self._last_policy_std = None
 
     def _normalize_q(self, q: float) -> float:
         """Min-max normalize Q to [0,1] for numerically stable UCB computation."""
@@ -125,8 +122,12 @@ class AlphaTensorMCTS:
         exploration = self.c_puct * child.P * (np.sqrt(node.N) / (1 + child.N))
         return q_norm + exploration
 
-    def _select(self, node: MCTSNode) -> MCTSNode:
-        """Traverse tree selecting max UCB child until a leaf is found."""
+    def _select(self, node: MCTSNode) -> Tuple[MCTSNode, List[MCTSNode]]:
+        """
+        Traverse tree selecting max UCB child until a leaf is found.
+        Returns (leaf_node, full_path_from_root_to_leaf).
+        """
+        path = [node]
         while not node.is_leaf() and not node.is_terminal:
             best_score = -float('inf')
             best_child = None
@@ -136,47 +137,57 @@ class AlphaTensorMCTS:
                     best_score = score
                     best_child = child
             node = best_child
-        return node
+            path.append(node)
+        return node, path
 
     @torch.no_grad()
-    def _get_policy_value(self, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
+    def _get_policy_value(self, state: np.ndarray) -> Tuple[np.ndarray, np.ndarray, np.ndarray, float]:
         """
-        Query neural network for action distribution and value estimate.
-        Returns sampled actions, their priors, and the value estimate.
+        Query neural network for policy parameters and value estimate.
+        Returns (mean, std, sampled_actions_with_log_priors, value).
         """
         state_t = torch.tensor(state, dtype=torch.float32, device=self.device).unsqueeze(0)
         mean, std, value = self.network(state_t)
         mean = mean.cpu().numpy().squeeze(0)
         std = std.cpu().numpy().squeeze(0)
         value = value.cpu().item()
+        
+        # Cache std for get_action_for_bounds radius computation
+        self._last_policy_std = std.copy()
 
         # Sample n_actions candidate actions from the policy distribution
         actions = np.random.normal(mean, std, size=(self.n_actions, len(mean)))
-        # Priors as normalized softmax over negative distance from mean (higher prior for closer-to-mean)
-        distances = np.linalg.norm(actions - mean, axis=1)
-        priors = np.exp(-distances)
+        
+        # Compute priors as Gaussian log-probability under the policy distribution.
+        # P(a | μ, σ) ∝ exp(-0.5 * Σ((a_i - μ_i) / σ_i)²)
+        # This properly weights actions near the policy mode higher than outliers,
+        # giving UCB-PUCT a meaningful exploration-exploitation tradeoff.
+        std_safe = np.clip(std, 1e-6, None)  # Prevent division by zero
+        log_probs = -0.5 * np.sum(((actions - mean) / std_safe) ** 2, axis=1)
+        # Softmax normalization to get valid probability distribution
+        log_probs -= log_probs.max()  # numerical stability
+        priors = np.exp(log_probs)
         priors /= priors.sum() + 1e-8
 
-        return actions, priors, value
+        return actions, priors, std, value
 
-    def _expand(self, node: MCTSNode):
+    def _expand(self, node: MCTSNode) -> float:
         """
         Expand a leaf node: generate n_actions children using policy network.
         Each child stores the env state snapshot for O(1) restoration.
+        
+        Returns:
+            The critic's value estimate V(leaf) for backup.
         """
-        actions, priors, value = self._get_policy_value(node.state)
+        actions, priors, std, value = self._get_policy_value(node.state)
 
         # Inject Dirichlet noise at root for exploration
         if node.parent is None:
             noise = np.random.dirichlet([self.dirichlet_alpha] * self.n_actions)
             priors = (1 - self.dirichlet_epsilon) * priors + self.dirichlet_epsilon * noise
 
-        # Restore environment to this node's state before expanding
-        if node.env_state is not None:
-            self.env.set_state(node.env_state)
-
         for i, (action, prior) in enumerate(zip(actions, priors)):
-            # Step the environment to get the child's state
+            # Restore to parent state before each child step
             if node.env_state is not None:
                 self.env.set_state(node.env_state)
             
@@ -195,17 +206,20 @@ class AlphaTensorMCTS:
 
         return value
 
-    def _backup(self, node: MCTSNode, value: float):
-        """Backpropagate the value estimate up through the tree."""
-        current = node
-        while current is not None:
-            current.update(value)
+    def _backup(self, path: List[MCTSNode], value: float):
+        """
+        Backpropagate the value estimate through the FULL path from leaf to root.
+        
+        Standard AlphaZero backup: every node in the selection path gets updated,
+        not just the expanded node and its immediate children.
+        """
+        for node in reversed(path):
+            node.update(value)
             # Update global min/max Q for normalization
-            if current.Q < self._q_min:
-                self._q_min = current.Q
-            if current.Q > self._q_max:
-                self._q_max = current.Q
-            current = current.parent
+            if node.Q < self._q_min:
+                self._q_min = node.Q
+            if node.Q > self._q_max:
+                self._q_max = node.Q
 
     def search(self, initial_state: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -231,35 +245,23 @@ class AlphaTensorMCTS:
         )
 
         for _ in range(self.num_simulations):
-            # 1. SELECT
-            leaf = self._select(root)
+            # 1. SELECT — traverse tree to a leaf, tracking full path
+            leaf, path = self._select(root)
 
-            # 2. EXPAND (if not terminal)
-            if not leaf.is_terminal:
-                value = self._expand(leaf)
-                
-                # After expansion, evaluate the first child
-                if leaf.children:
-                    first_child = list(leaf.children.values())[0]
-                    
-                    # Get neural value estimate for this child
-                    _, _, child_value = self._get_policy_value(first_child.state)
-                    
-                    # 3. EVALUATE: combine critic value with immediate reward
-                    # Restore env to child state to get reward
-                    self.env.set_state(first_child.env_state)
-                    reward = self.env.calculate_reward(self.env.p, self.env.q)
-                    
-                    # 4. BACKUP
-                    self._backup(first_child, child_value + reward * 0.01)
-                else:
-                    self._backup(leaf, leaf.Q)
-            else:
-                self._backup(leaf, 0.0)
+            if leaf.is_terminal:
+                # Terminal node: backup 0 through the path
+                self._backup(path, 0.0)
+                continue
+
+            # 2. EXPAND — create children of leaf
+            # 3. EVALUATE — V(leaf) is returned by _expand
+            value = self._expand(leaf)
+
+            # 4. BACKUP — propagate V(leaf) through the FULL selection path
+            self._backup(path, value)
 
         # Extract visit count distribution over root children
         if not root.children:
-            # Network not warmed up yet — return random action
             default_action = np.zeros(2, dtype=np.float32)
             return default_action, np.array([1.0])
 
@@ -276,35 +278,53 @@ class AlphaTensorMCTS:
 
     def get_action_for_bounds(self, initial_state: np.ndarray,
                                original_a_range: List, original_b_range: List,
-                               radius_multiplier: float = 3.0) -> Tuple[List, List]:
+                               n_sigma: float = 2.0) -> Tuple[List, List]:
         """
         High-level API for NeuralMCTSPolyDomain integration.
         Runs MCTS and converts the best continuous action into integer GCF bounds.
+        
+        The search radius is derived from the policy network's predicted standard
+        deviation (σ), not an arbitrary multiplier. The bounds cover ±n_sigma
+        standard deviations around the best action's implied center, ensuring
+        the search region has a principled relationship to the network's uncertainty.
         
         Args:
             initial_state: Starting GCF trajectory observation
             original_a_range: Current a_n per-coefficient bounds (list of [min, max])
             original_b_range: Current b_n per-coefficient bounds (list of [min, max])
-            radius_multiplier: Scale the action std into a search radius
+            n_sigma: Number of policy std deviations to cover (default: 2.0 = ~95% CI)
         
         Returns:
             Updated (a_coef_range, b_coef_range) with tightened bounds
         """
         best_action, _ = self.search(initial_state)
-        a_proxy, b_proxy = float(best_action[0]), float(best_action[1])
+        
+        # Use the policy network's own uncertainty (std) to derive search radius.
+        # If the network is confident (small std), the search region is tight.
+        # If uncertain (large std), we search more broadly.
+        if self._last_policy_std is not None and len(self._last_policy_std) >= 2:
+            a_radius = max(2, int(abs(self._last_policy_std[0]) * n_sigma))
+            b_radius = max(2, int(abs(self._last_policy_std[1]) * n_sigma))
+        else:
+            # Fallback: use 20% of original range width
+            a_widths = [hi - lo for lo, hi in original_a_range]
+            b_widths = [hi - lo for lo, hi in original_b_range]
+            a_radius = max(2, int(np.mean(a_widths) * 0.2))
+            b_radius = max(2, int(np.mean(b_widths) * 0.2))
 
-        # Convert proxy scalar to a search radius around the midpoint
-        a_radius = max(int(abs(a_proxy) * radius_multiplier), 2)
-        b_radius = max(int(abs(b_proxy) * radius_multiplier), 2)
+        # Center the search radius around the midpoint of original bounds,
+        # shifted by the best action's direction signal
+        a_shift = int(np.clip(best_action[0], -a_radius, a_radius))
+        b_shift = int(np.clip(best_action[1], -b_radius, b_radius))
 
         new_a_range = []
         for lo, hi in original_a_range:
-            mid = (lo + hi) // 2
+            mid = (lo + hi) // 2 + a_shift
             new_a_range.append([max(lo, mid - a_radius), min(hi, mid + a_radius)])
 
         new_b_range = []
         for lo, hi in original_b_range:
-            mid = (lo + hi) // 2
+            mid = (lo + hi) // 2 + b_shift
             new_b_range.append([max(lo, mid - b_radius), min(hi, mid + b_radius)])
 
         return new_a_range, new_b_range

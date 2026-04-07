@@ -12,6 +12,7 @@ Architecture:
   Population → Selection → LLM Mutation/Crossover → Sandbox Evaluation → Archive
 """
 import time
+import re
 import random
 import json
 import sqlite3
@@ -19,7 +20,9 @@ import os
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, field, asdict
 
-from modules.continued_fractions.math_ai.llm.llm_client import LMStudioClient, random_mutation
+from modules.continued_fractions.math_ai.llm.llm_client import (
+    LMStudioClient, random_mutation, _CIRCUIT_BREAKER_THRESHOLD
+)
 from modules.continued_fractions.math_ai.agents.program_sandbox import evaluate_gcf_fitness
 
 
@@ -91,7 +94,8 @@ class AlphaEvolveEngine:
                  n_eval_terms: int = 200,
                  archive_threshold: float = 5.0,
                  llm_client: Optional[LMStudioClient] = None,
-                 db_path: Optional[str] = None):
+                 db_path: Optional[str] = None,
+                 disable_llm: bool = False):
         """
         Args:
             target_name: Human-readable name (e.g., "pi", "catalan")
@@ -117,7 +121,10 @@ class AlphaEvolveEngine:
         self.archive_threshold = archive_threshold
         
         self.llm = llm_client or LMStudioClient()
-        self.llm_available = self.llm.is_available()
+        self.disable_llm = disable_llm
+        # NOTE: Do NOT cache self.llm.is_available() here.
+        # The client has its own TTL cache. We call it live each generation
+        # so the engine picks up LM Studio restarts mid-campaign.
         
         self.population: List[GCFProgram] = []
         self.archive: List[GCFProgram] = []
@@ -221,6 +228,54 @@ class AlphaEvolveEngine:
         candidates = random.sample(self.population, min(k, len(self.population)))
         return max(candidates, key=lambda p: p.fitness)
     
+    @staticmethod
+    def _interpolate_lambda(code_a: str, code_b: str) -> str:
+        """
+        Interpolate numeric coefficients between two lambda expression strings.
+        Uses the first (code_a) as the structural template and blends coefficients
+        from the second (code_b) via uniform random interpolation weights.
+        """
+        nums_a = re.findall(r'(?<!\w)(\d+)', code_a)
+        nums_b = re.findall(r'(?<!\w)(\d+)', code_b)
+        
+        if not nums_a:
+            return code_a  # No coefficients to interpolate
+        
+        result = code_a
+        for i, num_str in enumerate(nums_a):
+            val_a = int(num_str)
+            # Pick a corresponding coefficient from parent B (cycling if shorter)
+            val_b = int(nums_b[i % len(nums_b)]) if nums_b else val_a
+            # Random interpolation weight per coefficient
+            alpha = random.random()
+            blended = int(round(alpha * val_a + (1 - alpha) * val_b))
+            blended = max(0, blended)  # Keep non-negative for safety
+            # Replace only the first remaining occurrence
+            result = result.replace(num_str, str(blended), 1)
+        
+        return result
+    
+    def _interpolate_crossover(self, parent_a: GCFProgram, parent_b: GCFProgram) -> tuple:
+        """
+        Coefficient-level interpolation crossover.
+        Uses the fitter parent as the structural template and blends numeric
+        coefficients from both parents. This preserves mathematical coherence
+        between a(n) and b(n) instead of naively swapping components.
+        """
+        # Use the fitter parent as the structural template
+        if parent_a.fitness >= parent_b.fitness:
+            template, donor = parent_a, parent_b
+        else:
+            template, donor = parent_b, parent_a
+        
+        try:
+            child_a_n = self._interpolate_lambda(template.a_n, donor.a_n)
+            child_b_n = self._interpolate_lambda(template.b_n, donor.b_n)
+            return (child_a_n, child_b_n)
+        except Exception:
+            # If interpolation fails, return the fitter parent with a small mutation
+            return random_mutation(template.a_n, template.b_n)
+    
     def _archive_discoveries(self):
         """Archive any programs exceeding the discovery threshold."""
         conn = sqlite3.connect(self.db_path)
@@ -274,10 +329,25 @@ class AlphaEvolveEngine:
         """
         Run a single generation of evolution.
         
+        Performance optimizations vs. the naive sequential loop:
+          - LLM mutations submitted in parallel via ThreadPoolExecutor
+            (GIL releases during urllib I/O → N calls ≈ 1 round-trip)
+          - Circuit breaker: 3 consecutive failures → skip remaining LLM calls
+          - LRU prompt cache: converged populations avoid redundant LLM calls
+          - n_novel off-by-one fixed (uses max(0, ...) not max(1, ...))
+          - Archive summary hoisted outside the novel loop
+        
         Returns:
             Dict with generation statistics.
         """
         self.generation += 1
+        
+        # Reset circuit breaker for this generation
+        self.llm.reset_circuit()
+        
+        # Live availability check (uses client TTL cache, NOT a stale __init__ value)
+        # In ablation mode (disable_llm=True), always report LLM as down
+        llm_up = (not self.disable_llm) and self.llm.is_available()
         
         # 1. Elitism — preserve top performers unchanged
         n_elite = max(1, int(self.pop_size * self.elite_frac))
@@ -287,25 +357,44 @@ class AlphaEvolveEngine:
         
         n_mutations = int(self.pop_size * self.mutation_rate)
         n_crossovers = int(self.pop_size * self.crossover_rate)
-        n_novel = self.pop_size - n_elite - n_mutations - n_crossovers
+        n_novel = max(0, self.pop_size - n_elite - n_mutations - n_crossovers)
         
         llm_mutations = 0
         random_mutations_count = 0
         
-        # 2. Mutations — select parent, mutate via LLM or random
-        for _ in range(n_mutations):
-            parent = self._tournament_select()
-            
-            mutated = None
-            if self.llm_available and random.random() < 0.8:  # 80% LLM, 20% random
-                mutated = self.llm.propose_mutation(
-                    parent.a_n, parent.b_n,
-                    self.target_name, parent.fitness
-                )
-                if mutated:
-                    llm_mutations += 1
-            
-            if mutated is None:
+        # ── 2. MUTATIONS — parallel LLM calls ──
+        # Select parents first, then batch all LLM calls in parallel
+        mutation_parents = [self._tournament_select() for _ in range(n_mutations)]
+        
+        # Decide which parents get LLM vs random (80% LLM, 20% random)
+        llm_parent_indices = []
+        random_parent_indices = []
+        for i, parent in enumerate(mutation_parents):
+            if llm_up and self.llm.circuit_ok and random.random() < 0.8:
+                llm_parent_indices.append(i)
+            else:
+                random_parent_indices.append(i)
+        
+        # Submit all LLM mutation requests in parallel
+        llm_results = [None] * n_mutations
+        if llm_parent_indices:
+            llm_parents_batch = [
+                {'a_n': mutation_parents[i].a_n, 'b_n': mutation_parents[i].b_n,
+                 'fitness': mutation_parents[i].fitness}
+                for i in llm_parent_indices
+            ]
+            batch_results = self.llm.propose_mutations_parallel(
+                llm_parents_batch, self.target_name
+            )
+            for j, idx in enumerate(llm_parent_indices):
+                llm_results[idx] = batch_results[j]
+        
+        # Assemble mutation children
+        for i, parent in enumerate(mutation_parents):
+            mutated = llm_results[i]
+            if mutated:
+                llm_mutations += 1
+            else:
                 mutated = random_mutation(parent.a_n, parent.b_n)
                 random_mutations_count += 1
             
@@ -316,26 +405,28 @@ class AlphaEvolveEngine:
             )
             next_gen.append(child)
         
-        # 3. Crossovers — select two parents, combine via LLM
-        for _ in range(n_crossovers):
-            parent_a = self._tournament_select()
-            parent_b = self._tournament_select()
-            
-            crossed = None
-            if self.llm_available:
-                crossed = self.llm.propose_crossover(
-                    parent_a.to_dict(), parent_b.to_dict(),
-                    self.target_name
-                )
-                if crossed:
-                    llm_mutations += 1
-            
-            if crossed is None:
-                # Simple crossover: take a_n from one parent, b_n from other
-                if random.random() < 0.5:
-                    crossed = (parent_a.a_n, parent_b.b_n)
-                else:
-                    crossed = (parent_b.a_n, parent_a.b_n)
+        # ── 3. CROSSOVERS — parallel LLM calls ──
+        crossover_pairs = [
+            (self._tournament_select(), self._tournament_select())
+            for _ in range(n_crossovers)
+        ]
+        
+        crossed_results = [None] * n_crossovers
+        if llm_up and self.llm.circuit_ok and crossover_pairs:
+            pair_dicts = [
+                (pa.to_dict(), pb.to_dict())
+                for pa, pb in crossover_pairs
+            ]
+            crossed_results = self.llm.propose_crossovers_parallel(
+                pair_dicts, self.target_name
+            )
+        
+        for i, (parent_a, parent_b) in enumerate(crossover_pairs):
+            crossed = crossed_results[i]
+            if crossed:
+                llm_mutations += 1
+            else:
+                crossed = self._interpolate_crossover(parent_a, parent_b)
                 random_mutations_count += 1
             
             child = GCFProgram(
@@ -345,13 +436,17 @@ class AlphaEvolveEngine:
             )
             next_gen.append(child)
         
-        # 4. Novel proposals — ask LLM for entirely new programs
-        for _ in range(max(1, n_novel)):
+        # ── 4. NOVEL PROPOSALS ──
+        # Hoist archive summary outside the loop (critique #6)
+        archive_summary = (
+            ", ".join(f"a(n)={p.a_n}" for p in self.archive[-5:])
+            if self.archive else ""
+        )
+        
+        # Fix off-by-one: n_novel=0 means no novel calls (critique #4)
+        for _ in range(n_novel):
             novel = None
-            if self.llm_available:
-                archive_summary = ", ".join(
-                    f"a(n)={p.a_n}" for p in self.archive[-5:]
-                ) if self.archive else ""
+            if llm_up and self.llm.circuit_ok:
                 novel = self.llm.propose_novel(
                     self.target_name, self.target_value, archive_summary
                 )
@@ -359,10 +454,8 @@ class AlphaEvolveEngine:
                     llm_mutations += 1
             
             if novel is None:
-                # Random novel program
                 base = random.choice(SEED_PROGRAMS)
                 novel = random_mutation(base['a_n'], base['b_n'])
-                # Double mutate for more novelty
                 novel = random_mutation(novel[0], novel[1])
                 random_mutations_count += 1
             
@@ -399,8 +492,12 @@ class AlphaEvolveEngine:
         print("=" * 70)
         print(f"   AlphaEvolve: LLM-Guided Evolutionary GCF Discovery")
         print(f"   Target: {self.target_name} ≈ {self.target_value:.15f}")
-        print(f"   LLM: {'Qwen3-Coder-30B via LM Studio' if self.llm_available else 'UNAVAILABLE (random fallback)'}")
+        _llm_status = self.llm.is_available()
+        _llm_mode = 'DISABLED (ablation)' if self.disable_llm else (
+            'Qwen3-Coder-30B via LM Studio' if _llm_status else 'UNAVAILABLE (random fallback)')
+        print(f"   LLM: {_llm_mode}")
         print(f"   Population: {self.pop_size} | Generations: {max_generations}")
+        print(f"   LLM Timeout: {self.llm.timeout}s | Circuit Breaker: {_CIRCUIT_BREAKER_THRESHOLD} failures")
         print("=" * 70)
         
         self.initialize_population()
@@ -433,6 +530,11 @@ class AlphaEvolveEngine:
         h, r = divmod(elapsed, 3600)
         m, s = divmod(r, 60)
         
+        # Print cache stats if LLM was used
+        if not self.disable_llm:
+            cs = self.llm.cache_stats
+            print(f"\n   LLM Cache: {cs['hits']} hits / {cs['misses']} misses ({cs['hit_rate']} hit rate)")
+        
         print(f"\n{'=' * 70}")
         print(f"   EVOLUTION COMPLETE")
         print(f"{'=' * 70}")
@@ -447,3 +549,112 @@ class AlphaEvolveEngine:
         print(f"{'=' * 70}")
         
         return self.archive
+
+    @staticmethod
+    def run_ablation_study(target_name: str, target_value: float, 
+                           generations: int = 30, population_size: int = 30,
+                           seed: int = 42):
+        """
+        Run a controlled ablation study: LLM-guided vs random-only evolution.
+        
+        Uses identical random seeds so both runs start from the same initial 
+        population and face the same tournament selection sequence. This isolates
+        the LLM's contribution from other random factors.
+        
+        Prints a comparative table with:
+          - Best fitness achieved
+          - Generation at which peak fitness was reached
+          - Wall-clock time (LLM has I/O overhead; random is pure CPU)
+          - Cost efficiency: seconds per digit of improvement
+        
+        Usage:
+            AlphaEvolveEngine.run_ablation_study("euler_mascheroni", 0.5772156649)
+        """
+        print("=" * 70)
+        print("   ABLATION STUDY: LLM-Guided vs Random-Only Evolution")
+        print(f"   Target: {target_name} ≈ {target_value:.15f}")
+        print(f"   Generations: {generations} | Population: {population_size} | Seed: {seed}")
+        print("=" * 70)
+        
+        results = {}
+        
+        for mode, disable in [("LLM-Guided", False), ("Random-Only", True)]:
+            print(f"\n{'─' * 40}")
+            print(f"   Running: {mode}")
+            print(f"{'─' * 40}")
+            
+            random.seed(seed)
+            
+            engine = AlphaEvolveEngine(
+                target_name=target_name,
+                target_value=target_value,
+                population_size=population_size,
+                db_path=f"ablation_{mode.lower().replace('-','_')}_{target_name}.db",
+                disable_llm=disable,
+            )
+            
+            engine.initialize_population()
+            start = time.time()
+            
+            best_per_gen = []
+            for g in range(generations):
+                stats = engine.evolve_generation()
+                best_fitness = stats.get('best_fitness', 0.0) if stats else 0.0
+                best_per_gen.append(best_fitness)
+                
+                if best_fitness >= 12.0:
+                    break
+            
+            elapsed = time.time() - start
+            
+            peak_fitness = max(best_per_gen) if best_per_gen else 0.0
+            peak_gen = best_per_gen.index(peak_fitness) + 1 if best_per_gen else 0
+            
+            results[mode] = {
+                'peak_fitness': peak_fitness,
+                'peak_gen': peak_gen,
+                'elapsed': elapsed,
+                'final_gen': len(best_per_gen),
+                'archive_size': len(engine.archive),
+                'curve': best_per_gen,
+            }
+        
+        # Print comparison table
+        print(f"\n{'=' * 70}")
+        print(f"   ABLATION RESULTS")
+        print(f"{'=' * 70}")
+        print(f"   {'Metric':<30} {'LLM-Guided':>15} {'Random-Only':>15}")
+        print(f"   {'─' * 60}")
+        
+        llm = results["LLM-Guided"]
+        rnd = results["Random-Only"]
+        
+        print(f"   {'Peak Fitness (digits)':<30} {llm['peak_fitness']:>15.2f} {rnd['peak_fitness']:>15.2f}")
+        print(f"   {'Peak at Generation':<30} {llm['peak_gen']:>15d} {rnd['peak_gen']:>15d}")
+        print(f"   {'Wall-Clock Time (s)':<30} {llm['elapsed']:>15.1f} {rnd['elapsed']:>15.1f}")
+        print(f"   {'Discoveries Archived':<30} {llm['archive_size']:>15d} {rnd['archive_size']:>15d}")
+        
+        # Cost per digit
+        llm_cpd = llm['elapsed'] / max(0.01, llm['peak_fitness'])
+        rnd_cpd = rnd['elapsed'] / max(0.01, rnd['peak_fitness'])
+        print(f"   {'Seconds per Digit':<30} {llm_cpd:>15.1f} {rnd_cpd:>15.1f}")
+        
+        # Verdict
+        delta = llm['peak_fitness'] - rnd['peak_fitness']
+        speedup = rnd['elapsed'] / max(0.01, llm['elapsed'])
+        
+        print(f"\n   {'─' * 60}")
+        if delta > 0.5:
+            print(f"   VERDICT: LLM adds +{delta:.2f} digits — significant contribution.")
+            print(f"   Recommendation: KEEP LLM for the compute campaign.")
+        elif delta > 0.1:
+            print(f"   VERDICT: LLM adds +{delta:.2f} digits — marginal benefit.")
+            print(f"   Recommendation: Keep LLM but increase random mutation diversity.")
+        else:
+            print(f"   VERDICT: LLM adds {delta:+.2f} digits — NO measurable benefit.")
+            print(f"   Random-only is {speedup:.1f}x faster. LLM is pure overhead.")
+            print(f"   Recommendation: DISABLE LLM and reallocate budget to GPU enumeration.")
+        print(f"{'=' * 70}")
+        
+        return results
+

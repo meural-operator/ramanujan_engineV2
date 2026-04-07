@@ -49,28 +49,28 @@ class MCTSStrategy(BoundingStrategy):
 
     def prune_bounds(self, raw_a_bounds: List[List[int]], raw_b_bounds: List[List[int]]) -> Tuple[List[List[int]], List[List[int]]]:
         """
-        Executes internal physics/MCTS rollouts to intelligently restrict continuous Cartesian bounds.
-        Fallback to returning bare parameters if Tensor memory is corrupted or weights are missing.
+        Executes internal MCTS rollouts to intelligently restrict continuous Cartesian bounds.
+        
+        Note on action semantics (architectural limitation):
+            The RL environment operates in a simplified 2D continuous action space
+            (a_n_proxy, b_n_proxy) that does not directly correspond to the integer
+            polynomial coefficient vectors of the actual GCF search domain. The
+            network learns recurrence dynamics in this proxy space, and the conversion
+            to bounds is mediated by the policy's uncertainty (σ) rather than an
+            arbitrary multiplier. This is an inherent simplification of using RL
+            to guide combinatorial search, documented per L-06 review.
+        
+        Fallback to returning bare parameters if weights are missing.
         """
         if self.network is None:
             return raw_a_bounds, raw_b_bounds
             
-        mcts = AlphaTensorMCTS(env=self.env, network=self.network, num_simulations=10)
-        # Calculate the physical width of the incoming hardware block
-        base_width = 10
-        if raw_a_bounds and len(raw_a_bounds) > 0:
-            base_width = max(1, raw_a_bounds[0][1] - raw_a_bounds[0][0])
-            
-        # Dynamically scale the AI's maximum scalar expansion range 
-        # to roughly 65% of the block's physical limit. 
-        # This completely untethers the AI, allowing it to mathematically push the GPU 
-        # up to 100% of the block size during exploration, or collapse it during exploitation.
-        dynamic_multiplier = max(2.0, base_width * 0.65)
+        mcts = AlphaTensorMCTS(env=self.env, network=self.network, num_simulations=200)
         
         a_refined, b_refined = mcts.get_action_for_bounds(
             initial_state=self.env.reset(),
             original_a_range=raw_a_bounds,
             original_b_range=raw_b_bounds,
-            radius_multiplier=dynamic_multiplier
+            n_sigma=2.5  # ~99% CI coverage of the policy distribution
         )
         return a_refined, b_refined
