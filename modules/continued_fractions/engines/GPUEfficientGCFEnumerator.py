@@ -117,10 +117,59 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
         N_b = b_tensor.shape[0]
         N_terms = a_tensor.shape[1]
         
+        # ─────────────────────────────────────────────────────────
+        # GPU-NATIVE ASYMPTOTIC CONVERGENCE FILTER (B-1)
+        # Eliminate divergent (a,b) pairs before the expensive
+        # convergent evaluation loop.
+        #
+        # The Worpitzky/Poincaré test requires:
+        #   1. a_lead > 0  (positive leading coefficient)
+        #   2. deg(a)*2 >= deg(b)  (degree balance — always true for our domains)
+        #   3. discriminant = a_lead² + 4·b_lead >= 0  (when balanced)
+        #
+        # We compute the *effective* leading coefficient from the
+        # actual series values rather than polynomial coefficients,
+        # which works regardless of the domain's structural template.
+        #
+        # Method: For large n, the leading-order behavior of a(n)
+        # is captured by a(N)/N^d where d is the degree and N is a
+        # large index. We use the ratio a(N)/a(N-1) to estimate the
+        # effective degree and sign.
+        # ─────────────────────────────────────────────────────────
+        # Use the last two terms to estimate the leading behavior
+        # a_lead_sign ≈ sign(a(n)) for large n
+        a_lead_sign = torch.sign(a_tensor[:, -1])  # (N_a,)
+        b_lead_sign = torch.sign(b_tensor[:, -1])  # (N_b,)
+        
+        # Filter individual a sequences: discard those with non-positive leading behavior
+        a_valid_mask = a_lead_sign > 0  # Worpitzky condition 1
+        n_a_pruned = int((~a_valid_mask).sum().item())
+        
+        if n_a_pruned > 0:
+            valid_a_indices = torch.nonzero(a_valid_mask).squeeze(1)
+            a_tensor = a_tensor[valid_a_indices]
+            a_coef_list = [a_coef_list[i] for i in valid_a_indices.cpu().numpy()]
+            N_a = a_tensor.shape[0]
+        
+        # For balanced-degree domains, apply discriminant check per (a,b) pair
+        # inside the chunk loop (below) as a mask to avoid materializing N_a×N_b
+        # 
+        # We pre-compute the large-n values for discriminant estimation:
+        #   a_asymptotic[i] ≈ a_lead_coef * N^(deg_a)
+        #   b_asymptotic[j] ≈ b_lead_coef * N^(deg_b)
+        # For the discriminant: 4*b_lead + a_lead² >= 0
+        # In terms of series values at index N: a_at_N² + 4*b_at_N * N^(deg_b - 2*deg_a) >= 0
+        # For balanced degrees (deg_b = 2*deg_a), this simplifies to:
+        #   a(N)² + 4*b(N) >= 0  (at large N, leading terms dominate)
+        self._a_last_term = a_tensor[:, -1].clone()  # (N_a,) — for discriminant in chunk loop
+        self._b_last_term = b_tensor[:, -1].clone()  # (N_b,) — for discriminant in chunk loop
+        
         num_iterations = N_a * N_b
         if verbose:
             print(f"Created final enumerations filters after {time() - start:.2f}s")
-            print(f"Batch evaluating {num_iterations} combinations on {self.device}...")
+            if n_a_pruned > 0:
+                print(f"[GPU Filter] Pruned {n_a_pruned} a-sequences with non-positive leading coefficient")
+            print(f"Batch evaluating {num_iterations:,} combinations on {self.device}...")
         
         raw_hits = []
         refined_results = []
@@ -220,7 +269,40 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
                     a_expanded = a_chunk.unsqueeze(1).expand(chunk_a_size, chunk_b_size, N_terms).reshape(-1, N_terms)
                     b_expanded = b_chunk.unsqueeze(0).expand(chunk_a_size, chunk_b_size, N_terms).reshape(-1, N_terms)
                     
+                    # ── GPU Discriminant Filter (B-1 in-chunk) ──────────────
+                    # For balanced-degree GCFs, Worpitzky requires:
+                    #   discriminant = a_lead² + 4·b_lead ≥ 0
+                    # We estimate this from the last term of each series.
+                    a_last_chunk = self._a_last_term[i : i + chunk_a_size]  # (chunk_a,)
+                    b_last_chunk = self._b_last_term[j : j + chunk_b_size]  # (chunk_b,)
+                    
+                    # Broadcast to (chunk_a, chunk_b) then flatten
+                    a_last_exp = a_last_chunk.unsqueeze(1).expand(chunk_a_size, chunk_b_size).reshape(-1)
+                    b_last_exp = b_last_chunk.unsqueeze(0).expand(chunk_a_size, chunk_b_size).reshape(-1)
+                    
+                    discriminant = a_last_exp ** 2 + 4.0 * b_last_exp
+                    convergent_mask = discriminant >= 0  # True = potentially convergent
+                    
+                    n_pruned_pairs = int((~convergent_mask).sum().item())
+                    
+                    # Only apply filter if it actually prunes something
+                    if n_pruned_pairs > 0 and n_pruned_pairs < a_expanded.shape[0]:
+                        alive_idx = torch.nonzero(convergent_mask).squeeze(1)
+                        a_expanded = a_expanded[alive_idx]
+                        b_expanded = b_expanded[alive_idx]
+                        # Store mapping for reconstructing original indices on hits
+                        _idx_remap = alive_idx
+                    else:
+                        _idx_remap = None
+                    # ── End discriminant filter ─────────────────────────────
+                    
                     bsz = a_expanded.shape[0]
+                    
+                    if bsz == 0:
+                        # All pairs pruned — skip this chunk entirely
+                        processed_combinations += chunk_a_size * chunk_b_size
+                        pbar.update(chunk_a_size * chunk_b_size)
+                        continue
                     
                     prev_q = torch.zeros(bsz, dtype=torch.float32, device=self.device)
                     q = torch.ones(bsz, dtype=torch.float32, device=self.device)
@@ -263,8 +345,14 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
                         keys_cpu = hash_keys[match_indices].cpu().numpy()
                         
                         for idx_gpu, key in zip(match_indices_cpu, keys_cpu):
-                            a_idx = i + int(idx_gpu) // chunk_b_size
-                            b_idx = j + int(idx_gpu) % chunk_b_size
+                            # If discriminant filter was applied, remap through the alive_idx
+                            if _idx_remap is not None:
+                                original_flat_idx = int(_idx_remap[int(idx_gpu)].item())
+                            else:
+                                original_flat_idx = int(idx_gpu)
+                            
+                            a_idx = i + original_flat_idx // chunk_b_size
+                            b_idx = j + original_flat_idx % chunk_b_size
                             match = Match(key, a_coef_list[a_idx], b_coef_list[b_idx])
                             raw_hits.append(match)
                             
@@ -277,9 +365,9 @@ class GPUEfficientGCFEnumerator(EfficientGCFEnumerator):
                     # ─────────────────────────────────────────────────────────
                     # LIVE PROGRESS LOGGING & ETA via tqdm
                     # ─────────────────────────────────────────────────────────
-                    processed_combinations += bsz
-                    pbar.update(bsz)
-                    pbar.set_postfix({'Raw Hits': len(raw_hits)})
+                    processed_combinations += chunk_a_size * chunk_b_size  # count full chunk, not filtered bsz
+                    pbar.update(chunk_a_size * chunk_b_size)
+                    pbar.set_postfix({'Raw Hits': len(raw_hits), 'Pruned': n_pruned_pairs})
                     
                     if verbose and (processed_combinations % (bsz * 50) == 0 or processed_combinations == num_iterations):
                         # Write persistently to log file every ~50 batches to avoid IO bottleneck

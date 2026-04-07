@@ -61,6 +61,82 @@ def _build_basis(names: set, precision: int) -> Dict[str, Any]:
     return {k: v for k, v in _registry.items() if k in names}
 
 
+def _build_quadratic_basis(names: set, precision: int) -> Dict[str, Any]:
+    """
+    Extend the linear basis with products and squares of constants.
+    
+    This allows PSLQ to find relations like:
+        v = (1/6) * pi^2          (= ζ(2))
+        v = (7/180) * pi^4        (= ζ(4)) 
+        v = gamma * pi + 3*log2
+    
+    We only include products of the most commonly appearing constants
+    to keep the basis size manageable (PSLQ reliability degrades with
+    basis size > ~20 elements at 200 dps).
+    """
+    linear = _build_basis(names, precision)
+    quadratic = dict(linear)  # start with linear basis
+    
+    # Core constants that appear in products in known identities
+    product_candidates = ['pi', 'gamma', 'log2', 'e', 'zeta3']
+    available = [c for c in product_candidates if c in linear]
+    
+    # Add squares: π², γ², log²(2), etc.
+    for c in available:
+        key = f"{c}^2"
+        quadratic[key] = linear[c] ** 2
+    
+    # Add pairwise products: π·γ, π·log(2), γ·log(2), etc.
+    for idx_i in range(len(available)):
+        for idx_j in range(idx_i + 1, len(available)):
+            c1, c2 = available[idx_i], available[idx_j]
+            key = f"{c1}*{c2}"
+            quadratic[key] = linear[c1] * linear[c2]
+    
+    # Add specific high-value composites from the literature
+    mpmath.mp.dps = precision
+    if 'pi' in linear:
+        quadratic['pi^4'] = linear['pi'] ** 4  # appears in ζ(4) = π⁴/90
+    if 'pi' in linear and 'gamma' in linear:
+        quadratic['gamma/pi'] = linear['gamma'] / linear['pi']
+    
+    return quadratic
+
+
+def _build_algebraic_basis(names: set, precision: int) -> Dict[str, Any]:
+    """
+    Extend the linear basis with algebraic (root) expressions.
+    
+    This allows PSLQ to find relations involving:
+        √π, ∛2, π^(1/3), etc.
+    
+    These appear in some Ramanujan-type formulas.
+    Kept small to avoid PSLQ unreliability.
+    """
+    linear = _build_basis(names, precision)
+    algebraic = dict(linear)
+    
+    mpmath.mp.dps = precision
+    
+    # Square roots of core constants
+    root_candidates = ['pi', 'e', 'zeta3', 'zeta5']
+    for c in root_candidates:
+        if c in linear and linear[c] > 0:
+            algebraic[f"sqrt({c})"] = mpmath.sqrt(linear[c])
+    
+    # Cube roots (appear in some elliptic integral formulas)
+    for c in ['pi', 'e']:
+        if c in linear and linear[c] > 0:
+            algebraic[f"cbrt({c})"] = mpmath.cbrt(linear[c])
+    
+    # Specific algebraic expressions from Ramanujan's work
+    if 'pi' in linear:
+        algebraic['1/pi'] = 1 / linear['pi']
+        algebraic['pi^(3/2)'] = linear['pi'] ** mpmath.mpf('1.5')
+    
+    return algebraic
+
+
 def resolve_identity(
     value: float,
     basis_constants: Optional[set] = None,
@@ -141,43 +217,68 @@ def resolve_identity(
     except Exception:
         pass
 
-    # ── Method 2: Explicit rational PSLQ over a chosen basis ─────────────────
-    # Constructs a numerical vector [value, c1, c2, c3, ...] and finds
-    # integer relation [n0, n1, n2, ...] such that sum(ni * vi) = 0
-    basis = _build_basis(basis_constants, precision)
-    names = list(basis.keys())
-    vector = [val] + [basis[n] for n in names]
-
-    try:
-        relation = mpmath.pslq(vector, maxcoeff=max_denominator, tol=tolerance)
-        if relation is not None and relation[0] != 0:
-            # Relation: relation[0]*value + relation[1]*c1 + ... = 0
-            # Rearranged: value = -(relation[1]*c1 + ...) / relation[0]
-            n0 = int(relation[0])
-            terms = {}
-            parts = []
-            for i, name in enumerate(names):
-                ni = int(relation[i + 1])
-                if ni != 0:
-                    terms[name] = mpmath.mpf(-ni) / mpmath.mpf(n0)
-                    coef_str = f"{-ni}/{n0}"
-                    parts.append(f"({coef_str}) * {name}")
-
-            if parts:
-                expr_str = " + ".join(parts)
-                reconstructed = sum(terms[n] * basis[n] for n in terms)
-                residual = float(abs(val - reconstructed))
-
-                # Accept if residual is small relative to precision
-                if residual < 1e-10:
-                    result['found'] = True
-                    result['expression'] = expr_str
-                    result['coefficients'] = {n: float(terms[n]) for n in terms}
-                    result['residual'] = residual
-                    result['method'] = 'pslq_basis'
-
-    except Exception as e:
-        result['error'] = str(e)
+    # ── Method 2: Graded PSLQ Search ─────────────────────────────────────────
+    # Tier 1: Linear basis (fast, small vector, high reliability)
+    # Tier 2: Quadratic basis (products & squares of constants)
+    # Tier 3: Algebraic basis (square roots & cube roots)
+    #
+    # Each tier only runs if the previous one failed.
+    # Larger bases need higher precision to avoid spurious relations.
+    
+    tiers = [
+        ('pslq_linear',    _build_basis(basis_constants, precision), precision),
+        ('pslq_quadratic', _build_quadratic_basis(basis_constants, precision + 50), precision + 50),
+        ('pslq_algebraic', _build_algebraic_basis(basis_constants, precision + 100), precision + 100),
+    ]
+    
+    for method_name, basis, tier_precision in tiers:
+        if not basis:
+            continue
+        
+        # Safety guard: PSLQ with too many basis elements relative to precision
+        # can find spurious integer relations. Rule of thumb: need at least
+        # ~8 digits of working precision per basis element for PSLQ reliability.
+        max_safe_basis_size = tier_precision // 8
+        if len(basis) > max_safe_basis_size:
+            logger.warning(
+                f"Skipping {method_name}: basis size {len(basis)} exceeds "
+                f"safe limit {max_safe_basis_size} for {tier_precision} dps"
+            )
+            continue
+        
+        mpmath.mp.dps = tier_precision
+        names = list(basis.keys())
+        vector = [val] + [basis[n] for n in names]
+        
+        try:
+            relation = mpmath.pslq(vector, maxcoeff=max_denominator, tol=tolerance)
+            if relation is not None and relation[0] != 0:
+                n0 = int(relation[0])
+                terms = {}
+                parts = []
+                for idx, name in enumerate(names):
+                    ni = int(relation[idx + 1])
+                    if ni != 0:
+                        terms[name] = mpmath.mpf(-ni) / mpmath.mpf(n0)
+                        coef_str = f"{-ni}/{n0}"
+                        parts.append(f"({coef_str}) * {name}")
+    
+                if parts:
+                    expr_str = " + ".join(parts)
+                    reconstructed = sum(terms[n] * basis[n] for n in terms)
+                    residual = float(abs(val - reconstructed))
+    
+                    if residual < 1e-10:
+                        result['found'] = True
+                        result['expression'] = expr_str
+                        result['coefficients'] = {n: float(terms[n]) for n in terms}
+                        result['residual'] = residual
+                        result['method'] = method_name
+                        return result  # Found — stop searching deeper tiers
+    
+        except Exception as e:
+            logger.debug(f"{method_name} failed: {e}")
+            continue
 
     return result
 
